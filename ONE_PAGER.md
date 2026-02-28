@@ -1,11 +1,50 @@
-# Inventory Management System — One Pager
+# Inventory Management System 
+==================================================
+1) PROJECT OVERVIEW
+==================================================
+You are a Senior Full-Stack Engineer and UI/UX Designer. Small retail business owners need a reliable Inventory Management System (IMS) to track stock, sales, purchases, returns, and supplier expenses with accurate accounting (BDT), simple UX for staff, and exportable reports. The goal is an owner-focused, production-ready MERN app (MongoDB, Express, React(vite), Node) that is simple to operate at a single physical store but designed for later extensibility.
+
+
+This is NOT a public SaaS product. There are no payments, no
+subscription plans, and no public signup. It is a private internal
+tool accessed only by authorized staff via a simple login.
+
+You must produce clean, maintainable, fully deployable code.
+
+==================================================
+ROLE DEFINITION
+==================================================
+Act as:
+- Senior Frontend Engineer
+- Senior Backend Engineer
+- UI/UX Designer
+
+==================================================
+TECH STACK
+==================================================
+Frontend:
+- React (Vite) + TypeScript
+- Tailwind CSS
+- ShadCN UI
+
+Backend:
+- Node.js + Express (custom REST API)
+- express-async-errors for error handling
+- multer for file upload handling
+- axios for calling the Remove.bg API
+
+
+
+Authentication:
+- JWT-based login (access token + refresh token in HttpOnly cookie)
+- Single hardcoded admin account seeded via script OR
+  owner manually creates staff accounts from inside the app
+- No public signup page
 
 Status: Ready for product & engineering review
 
 ---
 
-## 1 — Executive summary / Problem
-Small retail business owners need a reliable Inventory Management System (IMS) to track stock, sales, purchases, returns, and supplier expenses with accurate accounting (BDT), simple UX for staff, and exportable reports. The goal is an owner-focused, production-ready MERN app (MongoDB, Express, React, Node) that is simple to operate at a single physical store but designed for later extensibility.
 
 Business needs solved:
 - Prevent stockouts and reconciliate stock changes
@@ -17,9 +56,8 @@ Business needs solved:
 ---
 
 ## 2 — Audience & ideal customer
-- Primary user: Business owner / store manager at a small retail shop (pharmacy, grocery, toiletries) operating a single outlet.
-- Secondary users: Cashiers and staff (create sales), procurement/purchasing staff (create purchases/returns), Managers (admin tasks, reporting).
-- Ideal customer profile: Single-store small business in Bangladesh, uses desktop/pos terminal for operations, needs VAT handling, monthly/yearly reports, and simple supplier ledger.
+- Owner,manager or staffs are the only users , this is going to have three access point, only they to going to visit the site maybe from multiple devices thats it (no customer interaction with the site)
+
 
 Persona (example):
 - Name: "Rahim"
@@ -31,88 +69,151 @@ Persona (example):
 
 ## 3 — Platform & product scope (MVP)
 - Platform: Responsive web app — desktop-first SPA built with React (Vite + TypeScript).
-- Backend: Node.js + Express + Mongoose (self-hosted MongoDB on VPS for MVP).
-- Storage: Product images stored in S3 / object storage + CDN recommended.
-- Scope: MVP supports single-store inventory (single warehouse), internal POS (staff-entered sales), purchases, returns, supplier ledger, expense tracking, and reporting (PDF / XLSX).
+- Backend: Node.js + Express + Mongoose (run locally for MVP; no cloud deployment or backup strategy required at this stage).
+- Storage: Product images stored via Cloudinary (only the image URL is saved in MongoDB). Maximum expected images: ~500, so this is lightweight. No S3 or CDN setup required.
+- Scope: MVP supports single-store inventory (single warehouse), internal POS (owner-entered sales), purchases, purchase returns, sales returns, customer management, expense tracking, and reporting (PDF / XLSX). No supplier ledger — the owner is the sole supplier.
 - Barcode: No camera scanning in MVP; support manual SKU or keyboard-emulating barcode scanners.
 - Multi-store: Not in MVP. Schema designed for later multi-warehouse support.
 
 ---
 
 ## 4 — Roles & access
-- Roles (MVP): Owner/Admin, Manager, Staff
-- RBAC in MVP: coarse-grained role checks
-  - Owner/Admin: full access (users, settings)
-  - Manager: product & purchase management, reports, approve returns
-  - Staff: create sales/orders, view products
+- Roles (MVP): Owner/Admin only — this is a single-owner internal tool. No public-facing registration. No staff or cashier access in MVP.
+- RBAC structure is kept in code for future scalability (e.g., adding Manager or Staff roles later from inside the dashboard), but only the Owner role is active in MVP.
+  - Owner/Admin: full access (all modules, settings, reports, user management)
+  - Manager (future): product & purchase management, reports, approve returns
+  - Staff (future): create sales/orders, view products
 - Authentication: JWT access tokens (short-lived) + refresh tokens (HttpOnly cookie).
 - Refresh token strategy: rotating refresh tokens stored hashed on user document (single-use rotation).
+- Owner account created via a database seed script (backend/scripts/seed_users.js). No /auth/register endpoint or Register page exposed in the UI.
 
 ---
 
 ## 5 — Key functional requirements (MVP)
-1. Product Management
-   - CRUD products: name, product_code (unique), selling/buying price, unit, VAT percent, description, image_url, weight/unit
-   - Stock fields: on_hand (authoritative), reserved (optional), available (on_hand - reserved)
-   - Stock +/- adjustments (with inventory ledger entries)
-   - Search: MongoDB text index + product_code exact lookup; simple fuzzy/autocomplete with front-end regex/prefix (no Algolia/Atlas Search for self-hosting)
 
-2. Orders / Sales
-   - Create Draft → Confirm workflow
-   - Confirmed: stock decremented immediately
-   - Support: partial payments, multiple payment lines (MVP supports single order payments but API supports multiple entries), record customer name/phone
-   - Statuses: Draft, Confirmed, Partially Paid, Paid, Cancelled, Returned
-   - Sales returns support (creates an inbound inventory movement)
+a) Category Management
 
-3. Purchases
-   - Single-step purchase record (receive + invoice)
-   - Full payment at creation (MVP, though payments array supported)
-   - Supplier details and purchase returns
-   - Downloadable Purchase Report (PDF & Excel)
+- Owner/manager can add, edit, and delete product categories
+- Each category has: name (unique), description (optional), 
+  slug (auto-generated from name for URL use)
+- Categories are managed from a dedicated settings/category 
+  page — not inline on the product form
+- A product must belong to exactly one category
+- Deleting a category is only allowed if no products are 
+  currently assigned to it (enforced by backend validation)
+- Categories are searchable/filterable on the Products list page
 
-4. Returns
-   - Supplier returns and customer returns as separate documents
-   - Returns include snapshot of original invoice (no immutable DB link by default; snapshots retained)
-   - Returns create inventory movements and adjust stock; require verification before completion (business rule)
+b) Product Management
 
-5. Expenses
-   - Track inventory-related expenses (date, party, total, paid/due)
-   - Filterable by date range, with totals
+- CRUD products: name, product_code (unique), selling/buying price, unit, VAT policy (toggle on/off; if enabled, owner enters a custom VAT percentage for that specific product), description, image_url (Cloudinary), weight/weight unit
+- Stock fields: on_hand (authoritative), reserved (optional), available (on_hand - reserved)
+- Stock +/- manual adjustments (with inventory ledger entries written automatically)
+- Search: MongoDB text index + product_code exact lookup; simple fuzzy/autocomplete with front-end regex/prefix (no Algolia/Atlas Search for self-hosting)
 
-6. Reporting & Exports
-   - Sales, Purchases, Inventory reports
-   - Exports: PDF (Puppeteer server-side HTML->PDF) and Excel (SheetJS or ExcelJS)
-   - Scheduled exports: optional (future), on-demand supported
+
+c) Customer Management 
+
+- Full customer profiles: name, phone number, address
+- Purchase history: linked list of all orders placed by that customer
+- Searchable by name or phone number
+- Customers are created at point of sale and reusable across orders
+
+
+d) Orders / Sales 
+
+- Create → Confirm workflow (no Draft step; orders are confirmed directly)
+- Confirmed: stock decremented immediately upon confirmation
+- Support: partial payments, record customer linked to customer profile
+- Statuses: Confirmed, Partially Paid, Paid, Cancelled, Returned (Draft removed)
+- Sales returns support (creates an inbound inventory movement; see Sales Returns below)
+
+
+e) Sales Returns 
+
+- Dedicated Sales Return module separate from the order confirm/cancel flow
+- Each return entry records: returned product(s) with quantity, original order reference (snapshot — no hard DB link required), customer details (name, phone, address), return date
+- Stock automatically increased upon return; a Stock Movement Log entry is written (reason: Sales Return)
+- Dedicated list view of all sales returns with full details and filtering by date range
+- Export to PDF and Excel supported
+
+
+f) Purchases 
+
+- Owner is the sole supplier — no external supplier entity required
+- Single-step purchase record (receive + invoice): purchase date, products purchased (name, code, quantity, buying price per unit), net amount, paid amount, due amount (auto-calculated)
+- Stock automatically increased when a purchase entry is created; Stock Movement Log entry written (reason: Purchase)
+- Grand totals across all purchases viewable
+- Downloadable Purchase Report: PDF & Excel; daily, weekly, monthly report generation
+
+
+g) Purchase Returns 
+
+- Owner can return products (remove from inventory without a sale)
+- Records: product name, code, quantity returned, date; due amounts adjusted accordingly
+- Stock automatically decreased; Stock Movement Log entry written (reason: Purchase Return)
+- Viewable list of all purchase returns with full details
+- Export to PDF and Excel supported
+
+
+h) Expenses 
+
+- Track all business-related expenses: date, party name, expense description/category, total amount, paid amount, due amount (auto-calculated)
+- Filterable by date range, with summary totals (total expenses, total paid, total due)
+- Daily, weekly, monthly report generation
+- Export to PDF and Excel supported (previously missing — now included)
+
+
+i) Stock Movement Log 
+
+- Every stock change automatically recorded — sales, purchases, returns, manual adjustments
+- Each log entry: product name & code, quantity changed (+/−), reason/source (Sale, Purchase, Purchase Return, Sales Return, Manual Adjustment), date & time, stock level before and after
+- Viewable and filterable by product, date range, and reason type
+- Export to PDF and Excel supported
+
+
+j) Reporting & Exports 
+
+- All modules support export: Sales, Purchases, Purchase Returns, Sales Returns, Expenses, Stock Movement Log
+- Export formats: PDF (Puppeteer server-side HTML→PDF) and Excel (SheetJS or ExcelJS)
+- All reports support daily, weekly, monthly, yearly, and custom date range filtering
+- Scheduled exports: optional (future); on-demand supported in MVP
 
 ---
 
 ## 6 — Data model — core collections (high-level)
-Design decisions:
+1) Design decisions:
 - Inventory ledger: dedicated immutable collection inventory_transactions (movement_id)
 - Money: stored in minor units (paisa) as 64-bit integers (NumberLong via mongoose-long)
 - Historical integrity: orders & purchases store snapshots of relevant product/price fields
 - Soft-delete: all finance-critical records (is_deleted + deletedAt + deletedBy); purge job uses retention config
 
-Collections (key fields — abridged):
-- products
-  - _id, product_code (unique), name, description, category, unit, price_selling_paisa, price_buying_paisa, vat_percent, on_hand (int), reserved, available, image_url, is_deleted
+2) Collections (key fields — abridged):
+
+Categories:
+- _id, name (unique), slug (unique, auto-generated), 
+  description, is_deleted, createdAt
+- Indexes: unique name, unique slug
+
+Products:
+
+  - _id, product_code (unique), name, description, category_id (ObjectId, ref: Category), unit, selling_price (in bdt), buying_price (in bdt), vat_percent, on_hand (int), reserved, available, image_url, is_deleted
   - Indexes: unique product_code (partial), text index (name, description, product_code), on_hand
 
-- inventory_transactions
+Inventory_transactions:
   - _id, movement_id (MOV-...), product_id, product_code (snapshot), qty (positive in/negative out), type (purchase_in, sale_out, purchase_return, sale_return, adjustment), unit_cost_paisa, timestamp, source { doc_type, doc_id, doc_number }, createdBy
   - Indexes: (product_id, timestamp), movement_id unique, source.doc_type+doc_id
 
-- orders
+Orders:
   - _id, order_number (ORD-...), status, customer snapshot, lines [product snapshot, qty, unit_price_paisa, unit_cost_paisa, inventory_movements[]], subtotal_paisa, vat_total_paisa, total_paisa, payments[], amount_received_paisa, amount_due_paisa, is_deleted, retain_until
   - Indexes: order_number, createdAt, status
 
-- purchases
+Purchases:
   - _id, purchase_number, supplier_id, supplier_name, date, lines, subtotal, vat, total, payments, inventory_movements[], is_deleted
 
-- returns
+Returns:
   - _id, return_number, type (supplier/customer), related_original_snapshot, lines, status, inventory_movements[], createdBy
 
-- suppliers, users, audit_logs, counters
+Suppliers, users, audit_logs, counters:
   - counters: key (orders,purchases,movements) + seq (for monotonic human-friendly IDs)
 
 Note: Counters are used via findOneAndUpdate ($inc) inside transactions to allocate human-readable numbers.
@@ -120,13 +221,18 @@ Note: Counters are used via findOneAndUpdate ($inc) inside transactions to alloc
 ---
 
 ## 7 — Money & precision
-- Stored as integer minor units (paisa): price_selling_paisa, price_buying_paisa, totals, payments — NumberLong (64-bit).
-- API exposes converted decimal strings for UI; server performs arithmetic in integers to avoid floating point issues.
+
+- All monetary values are stored and displayed in Taka (BDT). Amounts with sub-taka precision are expressed as decimal values (e.g., ৳1,250.75 — where .75 represents 75 paisa).
+- Internally, values are stored as integer paisa (1 BDT = 100 paisa, e.g., ৳1,250.75 stored as 125075) to avoid floating point arithmetic errors in calculations and aggregations.
+- The API layer converts paisa integers to decimal Taka strings for all UI-facing responses (e.g., 125075 → "1250.75"). The frontend always displays values in Taka with two decimal places.
+- All arithmetic (totals, VAT, due calculations) is performed server-side in integer paisa before converting to Taka for display. No floating point math on monetary values.
 
 ---
 
 ## 8 — Transactional & concurrency rules
-- MongoDB multi-document transactions used for critical flows that touch multiple documents:
+
+MongoDB multi-document transactions used for critical flows that touch multiple documents:
+
   - Confirm order: read product.on_hand (session), ensure sufficient stock, decrement on_hand, insert inventory_transactions, update order to Confirmed, attach movement ids — commit or abort
   - Create purchase: insert purchase, increment product.on_hand, insert inventory_transactions
   - Returns/cancellations: create reversing inventory_transactions and update on_hand
@@ -143,81 +249,169 @@ Note: Counters are used via findOneAndUpdate ($inc) inside transactions to alloc
 
 ---
 
-## 10 — Search & product lookup
+10 — Search & product lookup 
 - Self-hosted approach: MongoDB text index on name/description/product_code plus exact indexed product_code lookup for scanner/fast lookup.
 - Autocomplete/fuzzy: frontend uses debounced prefix/regex and server side text search; Atlas Search / Elastic / Algolia can be introduced later if scale requires.
 
+
+Order status lifecycle :
+
+- Confirmed — order created and stock decremented
+- Partially Paid — some payment received, balance due
+- Paid — fully settled
+- Cancelled — order voided; stock reinstated via inventory movement
+- Returned — goods returned by customer; handled via Sales Return module
 ---
 
-## 11 — API surface (high-level)
+11 — API surface (high-level) 
 Versioned base: /api/v1
-- Auth
-  - POST /auth/register
-  - POST /auth/login -> returns access token; sets HttpOnly refresh cookie
-  - POST /auth/refresh -> rotate refresh + return access token
-  - POST /auth/logout -> revoke refresh token
-  - GET /auth/me
-- Products
-  - GET /products (search, filters, pagination)
-  - POST /products
-  - GET /products/:id
-  - PUT /products/:id
-  - POST /products/:id/adjust  (create adjustment movement)
-- Orders (sales)
-  - POST /orders (create draft)
-  - GET /orders (list)
-  - GET /orders/:id
-  - POST /orders/:id/confirm (transactional — decrement stock & create movements)
-  - POST /orders/:id/pay
-  - POST /orders/:id/cancel
-  - POST /orders/:id/return
-- Purchases
-  - POST /purchases (create & receive — transactional)
-  - POST /purchases/:id/return
-- Returns
-  - POST /returns
-  - GET /returns
-- Inventory ledger
-  - GET /inventory/transactions (productId/from/to/type)
-- Reports & Exports
-  - GET /reports/sales?from=&to=&format=json|excel|pdf  (API queues or generates export)
-  - GET /reports/purchases, /reports/stock, /reports/top-products
-- Admin
-  - Users CRUD, retention settings, audit logs
+
+Auth 
+
+- POST /auth/login -> returns access token; sets HttpOnly refresh cookie
+- POST /auth/refresh -> rotate refresh + return access token
+- POST /auth/logout -> revoke refresh token
+- GET /auth/me
+
+
+Categories
+
+- POST   /categories
+- GET    /categories (list all active categories)
+- GET    /categories/:id
+- PUT    /categories/:id
+- DELETE /categories/:id 
+  (returns 400 if products exist under this category)
+
+
+Products
+
+-GET /products (search, filters, pagination, ?category_id= filter)
+-POST /products
+-GET /products/:id
+-PUT /products/:id
+-POST /products/:id/adjust  (create adjustment movement)
+
+
+Customers 
+
+-POST /customers
+-GET /customers (search by name/phone, pagination)
+-GET /customers/:id
+-PUT /customers/:id
+-GET /customers/:id/orders (purchase history)
+
+
+Orders (sales) 
+
+-POST /orders (create & confirm directly — no draft step)
+-GET /orders (list, filter by status/date/customer)
+-GET /orders/:id
+-POST /orders/:id/pay
+-POST /orders/:id/cancel
+
+
+
+Sales Returns 
+
+-POST /sales-returns (create return, auto-adjusts stock)
+-GET /sales-returns (list, filter by date/customer)
+-GET /sales-returns/:id
+
+
+Purchases 
+
+-POST /purchases (create & receive — transactional; no supplier_id required)
+-GET /purchases (list, filter by date range)
+-GET /purchases/:id
+
+
+Purchase Returns
+
+-POST /purchase-returns
+-GET /purchase-returns
+
+
+Inventory ledger
+
+-GET /inventory/transactions (productId/from/to/type/reason)
+
+
+Expenses
+
+-POST /expenses
+-GET /expenses (filter by date range)
+-PUT /expenses/:id
+-DELETE /expenses/:id
+
+
+Reports & Exports 
+
+-GET /reports/sales?from=&to=&format=json|excel|pdf
+-GET /reports/purchases?from=&to=&format=json|excel|pdf
+-GET /reports/sales-returns?from=&to=&format=json|excel|pdf
+-GET /reports/purchase-returns?from=&to=&format=json|excel|pdf
+-GET /reports/expenses?from=&to=&format=json|excel|pdf
+-GET /reports/stock-movements?from=&to=&format=json|excel|pdf
+-GET /reports/top-products
+
+
+Admin
+
+-Users CRUD, retention settings, audit logs
+
+
 
 Implementation notes:
-- Use consistent response envelope; use status codes (400/401/403/404/409/500)
-- Long-running exports: enqueue jobs via background worker (recommended) and provide job endpoint /exports/:jobId for download links.
 
+-Use consistent response envelope; use status codes (400/401/403/404/409/500)
+-Long-running exports: enqueue jobs via background worker (recommended) and provide job endpoint /exports/:jobId for download links.
+-All money values returned from API as decimal Taka strings (e.g., "1250.75") not paisa integers
 ---
+
 
 ## 12 — Frontend architecture (React + TypeScript)
 - Tech: React + TypeScript (Vite), react-hook-form + yup, axios, react-router, minimal component library (MUI optional).
-- State: local state + React Query (recommended later) or simple data fetching with axios for MVP.
-- Folder structure (recommended)
-  - src/
-    - api/ (axios client + typed wrappers)
-    - auth/ (AuthContext, token handling)
-    - components/ (NavBar, DataTable, Form components)
-    - pages/ (Login, Register, ProductsList, ProductCreate, OrdersList, OrderCreate, Purchases, Reports, Dashboard)
-    - utils/ (money convert, date utils)
-- Key flows:
-  - Auth: login -> store access token in localStorage + refresh cookie (HttpOnly)
-  - Products: list + create/edit modal
-  - Order flow: create draft, confirm (confirm endpoint returns 409 if insufficient stock)
-  - Reports: date range builder -> request export -> poll for job completion
+- State: local state + React Query (recommended lat	er) or simple data fetching with axios for MVP.
+- Folder structure (recommended):
 
-UX considerations:
-- Confirm step shows stock pre-checks before calling /orders/:id/confirm
-- Export jobs are async; UI shows progress and email/download link when ready
-- Image upload via presigned S3 PUT (backend returns signed URL)
+           -src/
+
+                 -api/ (axios client + typed wrappers)
+                 -auth/ (AuthContext, token handling)
+                 -components/ (NavBar, DataTable, Form components, ExportButton — shared export utility)
+                 -pages/ (Login, Dashboard, CategoryList, CategoryCreate, ProductsList, ProductCreate, CustomersList, CustomerDetail, OrdersList, OrderCreate, SalesReturnsList, SalesReturnCreate, PurchasesList, PurchaseCreate, PurchaseReturnsList, ExpensesList, StockMovementLog, Reports)
+                 -utils/ (money convert — paisa ↔ Taka decimal, date utils)
+
+
+
+
+-Key flows:
+
+*)Auth: login → store access token in memory/localStorage + refresh cookie (HttpOnly). No Register page.
+*)Category flow: owner manages categories from a dedicated Categories page; category selector appears as a dropdown on the Product create/edit form populated from GET /categories
+*)Order flow: create order (confirm directly — no draft step), link to customer profile
+*)Customer flow: create/view customer, browse purchase history from customer detail page
+*)Sales Returns: create return linked to original order + customer; stock auto-adjusted
+*)Reports: date range builder → request export → poll for job completion; all modules share the same ExportButton component
+
+
+
+-UX considerations:
+
+*)Confirm step shows stock pre-checks before calling confirm endpoint
+*)Export jobs are async; UI shows progress and download link when ready
+*)Image upload via Cloudinary presigned URL (frontend uploads directly to Cloudinary; URL saved via API)ghy
 
 ---
 
 ## 13 — Reporting & export libs
 - PDF: server-side rendering using Puppeteer (headless Chrome) to produce print-ready PDFs from HTML templates (consistent rendering).
 - Excel: SheetJS (xlsx) or ExcelJS server-side for streaming XLSX files.
-- For large exports: background jobs (Bull + Redis) recommended; can be synchronous for small datasets.
+- Shared export utility: A single reusable export service is built once and used across all modules — Sales, Purchases, Purchase Returns, Sales Returns, Expenses, and Stock Movement Log. Do not build module-specific exporters.
+- All exports support daily, weekly, monthly, yearly, and custom date range filtering.
+- For large exports: background jobs (Bull + Redis) recommended; can be synchronous for small datasets in MVP.
+- Money values in all exported reports are displayed in Taka with two decimal places (e.g., ৳1,250.75).
 
 ---
 
@@ -331,26 +525,3 @@ Estimated initial delivery time (approximate):
 - Testing:
   - Jest + Supertest for API tests; React Testing Library for frontend; Cypress for E2E
 
----
-
-## 23 — Final notes & acceptance checklist
-Before we mark this PR/design as ready for implementation:
-- [ ] Product approves confirmed business rules (stock decrement timing, returns approval policy, retention periods).
-- [ ] Ops approves self-host vs managed DB decision (self-host chosen here).
-- [ ] Engineering confirms availability of a Mongo replica set for dev & testing (transactions).
-- [ ] Product supplies branding and report template guidance for PDFs.
-
-If you approve the above choices, engineering can:
-- Clone scaffold (create_repo.sh), run npm install (backend & frontend),
-- Seed demo users (backend/scripts/seed_users.js),
-- Run tests (npm test in backend),
-- Start implementing iterative features and CI.
-
----
-
-If you'd like, I can now:
-- Generate a concise executive slide (3 slides) for leadership summarizing costs/ops.
-- Produce the finalized OpenAPI YAML and generated TypeScript client from it.
-- Produce a step-by-step runbook for deploying the MVP ( VMs, nginx, Mongo replica set, backup schedule).
-
-Which would you prefer next?
