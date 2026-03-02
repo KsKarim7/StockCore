@@ -162,7 +162,7 @@ exports.updateProduct = async (req, res) => {
   const product = await Product.findOne({
     _id: id,
     is_deleted: false,
-  });
+  }).populate('category_id', 'name slug');
 
   if (!product) {
     return res
@@ -174,7 +174,6 @@ exports.updateProduct = async (req, res) => {
     'product_code',
     'name',
     'description',
-    'category_id',
     'unit',
     'vat_enabled',
     'vat_percent',
@@ -188,6 +187,18 @@ exports.updateProduct = async (req, res) => {
       product[field] = req.body[field];
     }
   });
+
+  // Handle category_id separately to ensure proper ObjectId conversion
+  if (req.body.category_id) {
+    try {
+      product.category_id = new mongoose.Types.ObjectId(req.body.category_id);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid category ID format',
+      });
+    }
+  }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'selling_price')) {
     const sellingPaisa = Math.round(
@@ -258,7 +269,7 @@ exports.adjustStock = async (req, res) => {
     const product = await Product.findOne({
       _id: id,
       is_deleted: false,
-    }).session(session);
+    }).session(session).populate('category_id', 'name slug');
 
     if (!product) {
       await session.abortTransaction();

@@ -341,7 +341,7 @@ export default function Inventory() {
   const createProductMutation = useMutation<Product, Error, ProductPayload>({
     mutationFn: (data) => createProduct(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["products"], exact: false });
       toast({
         title: "Product created",
       });
@@ -360,7 +360,7 @@ export default function Inventory() {
   const updateProductMutation = useMutation<Product, Error, { id: string; data: ProductPayload }>({
     mutationFn: ({ id, data }) => updateProduct(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["products"], exact: false });
       toast({
         title: "Product updated",
       });
@@ -379,7 +379,7 @@ export default function Inventory() {
   const deleteProductMutation = useMutation<void, Error, string>({
     mutationFn: (id) => deleteProduct(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["products"], exact: false });
       toast({
         title: "Product deleted",
       });
@@ -395,11 +395,23 @@ export default function Inventory() {
     },
   });
 
-  const adjustStockMutation = useMutation<void, Error, { id: string; payload: { qty: number; reason: string } }>({
+  const adjustStockMutation = useMutation<Product, Error, { id: string; payload: { qty: number; reason: string } }>({
     mutationFn: ({ id, payload }) =>
       adjustStock(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
+    onSuccess: (updatedProduct) => {
+      // Update the cache with the returned product immediately
+      queryClient.setQueryData(
+        ["products", page, debouncedSearch, activeCategory],
+        (oldData: ProductsResponse | undefined) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            products: oldData.products.map((p) =>
+              p._id === updatedProduct._id ? updatedProduct : p
+            ),
+          };
+        }
+      );
       toast({
         title: "Stock adjusted",
       });
