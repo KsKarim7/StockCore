@@ -263,16 +263,31 @@ exports.adjustStock = async (req, res) => {
   }
 
   const session = await mongoose.startSession();
-  session.startTransaction();
+  let useTransaction = true;
 
   try {
-    const product = await Product.findOne({
+    session.startTransaction();
+  } catch (err) {
+    // MongoDB not running as replica set, proceed without transaction
+    useTransaction = false;
+  }
+
+  try {
+    const query = Product.findOne({
       _id: id,
       is_deleted: false,
-    }).session(session).populate('category_id', 'name slug');
+    });
+    
+    if (useTransaction) {
+      query.session(session);
+    }
+    
+    const product = await query.populate('category_id', 'name slug');
 
     if (!product) {
-      await session.abortTransaction();
+      if (useTransaction) {
+        await session.abortTransaction();
+      }
       session.endSession();
       return res
         .status(404)
@@ -282,7 +297,9 @@ exports.adjustStock = async (req, res) => {
     const newOnHand = (product.on_hand || 0) + delta;
 
     if (newOnHand < 0) {
-      await session.abortTransaction();
+      if (useTransaction) {
+        await session.abortTransaction();
+      }
       session.endSession();
       return res.status(400).json({
         success: false,
@@ -291,9 +308,9 @@ exports.adjustStock = async (req, res) => {
     }
 
     product.on_hand = newOnHand;
-    await product.save({ session });
+    await product.save({ session: useTransaction ? session : undefined });
 
-    const movementId = await Counter.nextVal('movements', session);
+    const movementId = await Counter.nextVal('movements', useTransaction ? session : undefined);
 
     const transaction = await InventoryTransaction.create(
       [
@@ -311,10 +328,12 @@ exports.adjustStock = async (req, res) => {
           createdBy: req.user ? req.user._id : undefined,
         },
       ],
-      { session }
+      useTransaction ? { session } : {}
     );
 
-    await session.commitTransaction();
+    if (useTransaction) {
+      await session.commitTransaction();
+    }
     session.endSession();
 
     const transformedProduct = convertMoneyFields(
@@ -329,7 +348,9 @@ exports.adjustStock = async (req, res) => {
       },
     });
   } catch (err) {
-    await session.abortTransaction();
+    if (useTransaction) {
+      await session.abortTransaction();
+    }
     session.endSession();
     throw err;
   }

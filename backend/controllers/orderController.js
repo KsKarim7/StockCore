@@ -145,7 +145,14 @@ exports.createOrder = async (req, res) => {
   }
 
   const session = await mongoose.startSession();
-  session.startTransaction();
+  let useTransaction = true;
+
+  try {
+    session.startTransaction();
+  } catch (err) {
+    // MongoDB not running as replica set, proceed without transaction
+    useTransaction = false;
+  }
 
   try {
     let customerSnapshot = {
@@ -155,13 +162,17 @@ exports.createOrder = async (req, res) => {
     };
 
     if (customer_id) {
-      const customer = await Customer.findOne({
+      const customerQuery = Customer.findOne({
         _id: customer_id,
         is_deleted: false,
-      }).session(session);
+      });
+      if (useTransaction) customerQuery.session(session);
+      const customer = await customerQuery;
 
       if (!customer) {
-        await session.abortTransaction();
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
         session.endSession();
         return res
           .status(404)
@@ -180,7 +191,9 @@ exports.createOrder = async (req, res) => {
         phone: customer_phone,
       };
     } else {
-      await session.abortTransaction();
+      if (useTransaction) {
+        await session.abortTransaction();
+      }
       session.endSession();
       return res.status(400).json({
         success: false,
@@ -197,7 +210,9 @@ exports.createOrder = async (req, res) => {
 
       const quantity = Number(qty);
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        await session.abortTransaction();
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
         session.endSession();
         return res.status(400).json({
           success: false,
@@ -205,13 +220,17 @@ exports.createOrder = async (req, res) => {
         });
       }
 
-      const product = await Product.findOne({
+      const productQuery = Product.findOne({
         _id: product_id,
         is_deleted: false,
-      }).session(session);
+      });
+      if (useTransaction) productQuery.session(session);
+      const product = await productQuery;
 
       if (!product) {
-        await session.abortTransaction();
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
         session.endSession();
         return res.status(404).json({
           success: false,
@@ -220,7 +239,9 @@ exports.createOrder = async (req, res) => {
       }
 
       if ((product.on_hand || 0) < quantity) {
-        await session.abortTransaction();
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
         session.endSession();
         return res.status(409).json({
           success: false,
@@ -256,7 +277,7 @@ exports.createOrder = async (req, res) => {
       });
 
       product.on_hand = (product.on_hand || 0) - quantity;
-      await product.save({ session });
+      await product.save({ session: useTransaction ? session : undefined });
     }
 
     const total_paisa = subtotal_paisa + vat_total_paisa;
@@ -272,7 +293,7 @@ exports.createOrder = async (req, res) => {
       status = 'Partially Paid';
     }
 
-    const order_number = await Counter.nextVal('orders', session);
+    const order_number = await Counter.nextVal('orders', useTransaction ? session : undefined);
 
     const orderDoc = await Order.create(
       [
@@ -297,13 +318,13 @@ exports.createOrder = async (req, res) => {
           amount_due_paisa,
         },
       ],
-      { session }
+      useTransaction ? { session: session } : {}
     );
 
     const order = orderDoc[0];
 
     for (const line of orderLines) {
-      const movement_id = await Counter.nextVal('movements', session);
+      const movement_id = await Counter.nextVal('movements', useTransaction ? session : undefined);
       await InventoryTransaction.create(
         [
           {
@@ -320,12 +341,13 @@ exports.createOrder = async (req, res) => {
             createdBy: req.user ? req.user._id : undefined,
           },
         ],
-        { session }
+        useTransaction ? { session } : {}
       );
     }
 
-    await session.commitTransaction();
-    session.endSession();
+    if (useTransaction) {
+      await session.commitTransaction();
+    }
 
     const transformed = convertOrderMoney(
       order.toObject({ virtuals: true })
@@ -336,9 +358,12 @@ exports.createOrder = async (req, res) => {
       data: { order: transformed },
     });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
+    if (useTransaction) {
+      await session.abortTransaction();
+    }
     throw err;
+  } finally {
+    session.endSession();
   }
 };
 
@@ -400,16 +425,27 @@ exports.cancelOrder = async (req, res) => {
   const { id } = req.params;
 
   const session = await mongoose.startSession();
-  session.startTransaction();
+  let useTransaction = true;
 
   try {
-    const order = await Order.findOne({
+    session.startTransaction();
+  } catch (err) {
+    // MongoDB not running as replica set, proceed without transaction
+    useTransaction = false;
+  }
+
+  try {
+    const orderQuery = Order.findOne({
       _id: id,
       is_deleted: false,
-    }).session(session);
+    });
+    if (useTransaction) orderQuery.session(session);
+    const order = await orderQuery;
 
     if (!order) {
-      await session.abortTransaction();
+      if (useTransaction) {
+        await session.abortTransaction();
+      }
       session.endSession();
       return res
         .status(404)
@@ -417,7 +453,9 @@ exports.cancelOrder = async (req, res) => {
     }
 
     if (order.status === 'Cancelled' || order.status === 'Returned') {
-      await session.abortTransaction();
+      if (useTransaction) {
+        await session.abortTransaction();
+      }
       session.endSession();
       return res.status(400).json({
         success: false,
@@ -426,13 +464,17 @@ exports.cancelOrder = async (req, res) => {
     }
 
     for (const line of order.lines) {
-      const product = await Product.findOne({
+      const productQuery2 = Product.findOne({
         _id: line.product_id,
         is_deleted: false,
-      }).session(session);
+      });
+      if (useTransaction) productQuery2.session(session);
+      const product = await productQuery2;
 
       if (!product) {
-        await session.abortTransaction();
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
         session.endSession();
         return res.status(404).json({
           success: false,
@@ -441,9 +483,9 @@ exports.cancelOrder = async (req, res) => {
       }
 
       product.on_hand = (product.on_hand || 0) + line.qty;
-      await product.save({ session });
+      await product.save({ session: useTransaction ? session : undefined });
 
-      const movement_id = await Counter.nextVal('movements', session);
+      const movement_id = await Counter.nextVal('movements', useTransaction ? session : undefined);
 
       await InventoryTransaction.create(
         [
@@ -461,14 +503,16 @@ exports.cancelOrder = async (req, res) => {
             createdBy: req.user ? req.user._id : undefined,
           },
         ],
-        { session }
+        useTransaction ? { session } : {}
       );
     }
 
     order.status = 'Cancelled';
-    await order.save({ session });
+    await order.save({ session: useTransaction ? session : undefined });
 
-    await session.commitTransaction();
+    if (useTransaction) {
+      await session.commitTransaction();
+    }
     session.endSession();
 
     const transformed = convertOrderMoney(
@@ -480,7 +524,9 @@ exports.cancelOrder = async (req, res) => {
       data: { order: transformed },
     });
   } catch (err) {
-    await session.abortTransaction();
+    if (useTransaction) {
+      await session.abortTransaction();
+    }
     session.endSession();
     throw err;
   }
