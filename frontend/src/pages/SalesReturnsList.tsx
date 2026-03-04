@@ -30,6 +30,15 @@ interface ReturnLineItem {
   qty: number;
 }
 
+interface AxiosErrorResponse {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+}
+
 // Convert status to StatusBadge StatusType
 const returnStatusToStatusType = (status: string): StatusType => {
   const lowerStatus = status.toLowerCase();
@@ -129,16 +138,10 @@ export default function SalesReturnsList() {
       });
     },
     onError: (error: AxiosError) => {
-      let description = error.message || "Something went wrong";
-
-      if (error.response?.status === 400) {
-        const msg = (error.response?.data as { message?: string })?.message;
-        description = msg || "Failed to create return";
-      }
-
+      const errorMessage = (error as AxiosErrorResponse)?.response?.data?.message || (error as Error)?.message || "Something went wrong";
       toast({
         title: "Failed to create return",
-        description: description,
+        description: errorMessage,
         variant: "destructive",
       });
     },

@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const InventoryTransaction = require('../models/InventoryTransaction');
 const Customer = require('../models/Customer');
 const Counter = require('../models/Counter');
+const Order = require('../models/Order');
 
 const buildPagination = (total, page, limit) => {
   const pages = Math.max(1, Math.ceil(total / limit));
@@ -127,6 +128,56 @@ exports.createSalesReturn = async (req, res) => {
 
     const return_number = await Counter.nextVal('sales_returns', useTransaction ? session : undefined);
 
+    // Validation 1: Check if order exists and get it
+    let originalOrder = null;
+    if (original_order_ref) {
+      const orderQuery = Order.findOne({
+        order_number: original_order_ref,
+        is_deleted: false,
+      });
+      if (useTransaction) orderQuery.session(session);
+      originalOrder = await orderQuery;
+
+      if (!originalOrder) {
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
+        session.endSession();
+        return res.status(404).json({
+          success: false,
+          message: `Order not found: ${original_order_ref}`,
+        });
+      }
+
+      // Validation 2: Check order status is returnable
+      if (!['Paid', 'Partially Paid'].includes(originalOrder.status)) {
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: `Cannot return order ${original_order_ref} — status is ${originalOrder.status}. Only Paid or Partially Paid orders are returnable`,
+        });
+      }
+    }
+
+    // Pre-fetch all products for the return request
+    const productIds = lines.map(l => l.product_id);
+    const productsMap = {};
+    for (const productId of productIds) {
+      const productQuery = Product.findOne({
+        _id: productId,
+        is_deleted: false,
+      });
+      if (useTransaction) productQuery.session(session);
+      const product = await productQuery;
+      if (product) {
+        productsMap[product._id.toString()] = product;
+      }
+    }
+
+    // Validation 3, 4, 5: For each line, validate against order
     for (const line of lines) {
       const { product_id, qty } = line;
       const quantity = Number(qty);
@@ -142,14 +193,8 @@ exports.createSalesReturn = async (req, res) => {
         });
       }
 
-      const productQuery = Product.findOne({
-        _id: product_id,
-        is_deleted: false,
-      });
-      if (useTransaction) productQuery.session(session);
-      const product = await productQuery;
-
-      if (!product) {
+      // Product must exist
+      if (!productsMap[product_id.toString()]) {
         if (useTransaction) {
           await session.abortTransaction();
         }
@@ -159,6 +204,72 @@ exports.createSalesReturn = async (req, res) => {
           message: 'Product not found',
         });
       }
+
+      const product = productsMap[product_id.toString()];
+
+      // Validation 3: Product must be in original order
+      if (originalOrder) {
+        const orderLine = originalOrder.lines.find(l => l.product_id.toString() === product_id.toString());
+        if (!orderLine) {
+          if (useTransaction) {
+            await session.abortTransaction();
+          }
+          session.endSession();
+          return res.status(400).json({
+            success: false,
+            message: `${product.name} was not part of order ${original_order_ref}`,
+          });
+        }
+
+        // Validation 4: Return quantity cannot exceed ordered quantity
+        if (quantity > orderLine.qty) {
+          if (useTransaction) {
+            await session.abortTransaction();
+          }
+          session.endSession();
+          return res.status(400).json({
+            success: false,
+            message: `Cannot return ${quantity} units of ${product.name} — only ${orderLine.qty} were ordered`,
+          });
+        }
+
+        // Validation 5: Check total returns (including this one) don't exceed ordered quantity
+        const previousReturnsQuery = SalesReturn.find({
+          original_order_ref,
+          'lines.product_id': mongoose.Types.ObjectId(product_id),
+          is_deleted: false,
+        });
+        if (useTransaction) previousReturnsQuery.session(session);
+        const previousReturns = await previousReturnsQuery;
+
+        let totalPreviouslyReturned = 0;
+        for (const prevReturn of previousReturns) {
+          const prevReturnLine = prevReturn.lines.find(l => l.product_id.toString() === product_id.toString());
+          if (prevReturnLine) {
+            totalPreviouslyReturned += prevReturnLine.qty;
+          }
+        }
+
+        const remainingReturnable = orderLine.qty - totalPreviouslyReturned;
+        if (quantity > remainingReturnable) {
+          if (useTransaction) {
+            await session.abortTransaction();
+          }
+          session.endSession();
+          return res.status(400).json({
+            success: false,
+            message: `Cannot return ${quantity} units of ${product.name} — only ${remainingReturnable} units remain returnable after previous returns`,
+          });
+        }
+      }
+    }
+
+    // All validations passed, now process inventory
+    for (const line of lines) {
+      const { product_id, qty } = line;
+      const quantity = Number(qty);
+
+      const product = productsMap[product_id.toString()];
 
       product.on_hand = (product.on_hand || 0) + quantity;
       await product.save({ session: useTransaction ? session : undefined });
