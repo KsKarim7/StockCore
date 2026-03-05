@@ -71,7 +71,8 @@ export default function Dashboard() {
 
   const handlePeriodChange = (value: string) => {
     let next = "7d";
-    if (value === "30") next = "30d";
+    if (value === "today") next = "today";
+    else if (value === "30") next = "30d";
     else if (value === "month") next = "month";
     else if (value === "custom") next = "custom";
     setPeriod(next);
@@ -85,7 +86,7 @@ export default function Dashboard() {
     <PageLayout
       title="Dashboard"
       searchPlaceholder="Search products, orders, customers..."
-      periodValue={period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
+      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
       onPeriodChange={handlePeriodChange}
     >
       {/* Stats Row */}

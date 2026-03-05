@@ -3,6 +3,7 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { StatCard } from "@/components/shared/StatCard";
 import { formatCurrency } from "@/utils/currency";
 import { formatDate } from "@/utils/formatDate";
+import { getPeriodDateRange } from "@/utils/dateRangeUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Wallet, DollarSign, AlertCircle, Plus, FileText, FileSpreadsheet, Edit2, Trash2 } from "lucide-react";
@@ -26,7 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getExpenses, createExpense, updateExpense, deleteExpense, type Expense } from "@/api/expensesApi";
+import { getExpenses, createExpense, updateExpense, deleteExpense, type Expense, type ExpensesResponse } from "@/api/expensesApi";
 
 interface AxiosErrorResponse {
   response?: {
@@ -44,6 +45,9 @@ export default function ExpensesList() {
   const [page, setPage] = useState(1);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [period, setPeriod] = useState("7d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   // Form state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -57,15 +61,24 @@ export default function ExpensesList() {
   // Delete dialog state
   const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
 
+  const getQueryDateRange = () => {
+    if (period === "custom") {
+      return { from: customFrom, to: customTo };
+    }
+    return { from: fromDate, to: toDate };
+  };
+
+  const { from: queryFrom, to: queryTo } = getQueryDateRange();
+
   // Fetch expenses
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["expenses", page, fromDate, toDate],
+  const { data, isLoading, error } = useQuery<ExpensesResponse>({
+    queryKey: ["expenses", page, fromDate, toDate, period, customFrom, customTo],
     queryFn: () =>
       getExpenses({
         page,
         limit: 10,
-        from: fromDate || undefined,
-        to: toDate || undefined,
+        from: queryFrom || undefined,
+        to: queryTo || undefined,
       }),
   });
 
@@ -158,6 +171,26 @@ export default function ExpensesList() {
     setIsEditingId(null);
   };
 
+  const handlePeriodChange = (value: string) => {
+    let next = "7d";
+    if (value === "today") next = "today";
+    else if (value === "30") next = "30d";
+    else if (value === "month") next = "month";
+    else if (value === "custom") next = "custom";
+    setPeriod(next);
+    
+    // Update date inputs based on period
+    if (next === "custom") {
+      // For custom, dates come from Header (customFrom/customTo)
+      setFromDate("");
+      setToDate("");
+    } else {
+      const { from, to } = getPeriodDateRange(next) || { from: "", to: "" };
+      setFromDate(from);
+      setToDate(to);
+    }
+  };
+
   const handleEditClick = (expense: Expense) => {
     setIsEditingId(expense._id);
     setPartyName(expense.party_name);
@@ -197,7 +230,16 @@ export default function ExpensesList() {
   };
 
   return (
-    <PageLayout title="Expenses" searchPlaceholder="Search expenses...">
+    <PageLayout 
+      title="Expenses" 
+      searchPlaceholder="Search expenses..."
+      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
+      onPeriodChange={handlePeriodChange}
+      customFrom={customFrom}
+      customTo={customTo}
+      onCustomFromChange={setCustomFrom}
+      onCustomToChange={setCustomTo}
+    >
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
         <StatCard

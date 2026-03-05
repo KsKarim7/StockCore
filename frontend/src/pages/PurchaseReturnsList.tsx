@@ -5,9 +5,10 @@ import { StatCard } from "@/components/shared/StatCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { getPeriodDateRange } from "@/utils/dateRangeUtils";
 import { Package, Plus, FileText, FileSpreadsheet, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseReturns, createPurchaseReturn, type PurchaseReturn } from "@/api/purchaseReturnsApi";
+import { getPurchaseReturns, createPurchaseReturn, type PurchaseReturn, type PurchaseReturnsResponse } from "@/api/purchaseReturnsApi";
 import { getPurchases } from "@/api/purchasesApi";
 import { getProducts as fetchProducts } from "@/api/productsApi";
 import {
@@ -40,6 +41,9 @@ interface AxiosErrorResponse {
 export default function PurchaseReturnsList() {
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [period, setPeriod] = useState("7d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -50,14 +54,28 @@ export default function PurchaseReturnsList() {
   const [quantity, setQuantity] = useState(1);
   const [lineItems, setLineItems] = useState<ReturnLineItem[]>([]);
 
+  const getDateRange = () => {
+    if (period === "custom") {
+      return { from: customFrom, to: customTo };
+    }
+    const range = getPeriodDateRange(period);
+    return range || { from: "", to: "" };
+  };
+
+  const { from: fromDate, to: toDate } = getDateRange();
+  const shouldFetch = period !== "custom" || !!(customFrom && customTo);
+
   // Fetch purchase returns
-  const { data: returnsData, isLoading } = useQuery({
-    queryKey: ["purchaseReturns", page],
+  const { data: returnsData, isLoading } = useQuery<PurchaseReturnsResponse>({
+    queryKey: ["purchaseReturns", page, period, customFrom, customTo],
     queryFn: () =>
       getPurchaseReturns({
         page,
         limit: 10,
+        from: fromDate,
+        to: toDate,
       }),
+    enabled: shouldFetch,
   });
 
   // Fetch purchases for selection
@@ -164,6 +182,15 @@ export default function PurchaseReturnsList() {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
+  const handlePeriodChange = (value: string) => {
+    let next = "7d";
+    if (value === "today") next = "today";
+    else if (value === "30") next = "30d";
+    else if (value === "month") next = "month";
+    else if (value === "custom") next = "custom";
+    setPeriod(next);
+  };
+
   // Export returns as CSV
   const handleExportCSV = () => {
     const headers = ["Return No", "Purchase No", "Date", "Items", "Qty"];
@@ -196,7 +223,18 @@ export default function PurchaseReturnsList() {
   };
 
   return (
-    <PageLayout title="Purchase Returns" searchPlaceholder="Search purchase returns...">
+    <PageLayout 
+      title="Purchase Returns" 
+      searchPlaceholder="Search purchase returns..."
+      searchValue={searchTerm}
+      onSearchChange={setSearchTerm}
+      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
+      onPeriodChange={handlePeriodChange}
+      customFrom={customFrom}
+      customTo={customTo}
+      onCustomFromChange={setCustomFrom}
+      onCustomToChange={setCustomTo}
+    >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
         <StatCard label="Total Returns" value={totalReturns.toString()} icon={Package} iconColor="text-primary" iconBg="bg-primary/10" />
         <StatCard label="Total Units Returned" value={totalQtyReturned.toString()} icon={Package} iconColor="text-success" iconBg="bg-success/10" />

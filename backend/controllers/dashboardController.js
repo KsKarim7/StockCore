@@ -25,6 +25,12 @@ const getDateRange = (period, from, to) => {
     return { startCurrent, endCurrent, days };
   }
 
+  if (period === 'today') {
+    startCurrent = new Date(now);
+    startCurrent.setHours(0, 0, 0, 0);
+    return { startCurrent, endCurrent, days: 1 };
+  }
+
   if (period === '30d' || period === 'month') {
     startCurrent = new Date(now);
     startCurrent.setDate(startCurrent.getDate() - 29);

@@ -3,12 +3,13 @@ import { AxiosError } from "axios";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { StatCard } from "@/components/shared/StatCard";
 import { formatCurrency } from "@/utils/currency";
+import { getPeriodDateRange } from "@/utils/dateRangeUtils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Truck, DollarSign, AlertCircle, Plus, FileText, FileSpreadsheet, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchases, createPurchase, type Purchase } from "@/api/purchasesApi";
+import { getPurchases, createPurchase, type Purchase, type PurchasesResponse } from "@/api/purchasesApi";
 import { getProducts as fetchProducts } from "@/api/productsApi";
 import {
   Sheet,
@@ -44,6 +45,9 @@ export default function PurchasesList() {
   const [page, setPage] = useState(1);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [period, setPeriod] = useState("7d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -56,15 +60,24 @@ export default function PurchasesList() {
   const [lineItems, setLineItems] = useState<PurchaseLineItem[]>([]);
   const [paidAmount, setPaidAmount] = useState("");
 
+  const getQueryDateRange = () => {
+    if (period === "custom") {
+      return { from: customFrom, to: customTo };
+    }
+    return { from: dateFrom, to: dateTo };
+  };
+
+  const { from: queryFrom, to: queryTo } = getQueryDateRange();
+
   // Fetch purchases
-  const { data: purchasesData, isLoading, isError, error } = useQuery({
-    queryKey: ["purchases", page, dateFrom, dateTo],
+  const { data: purchasesData, isLoading, isError, error } = useQuery<PurchasesResponse>({
+    queryKey: ["purchases", page, dateFrom, dateTo, period, customFrom, customTo],
     queryFn: () =>
       getPurchases({
         page,
         limit: 10,
-        from: dateFrom || undefined,
-        to: dateTo || undefined,
+        from: queryFrom || undefined,
+        to: queryTo || undefined,
       }),
   });
 
@@ -169,6 +182,26 @@ export default function PurchasesList() {
     setBuyingPrice("");
   };
 
+  const handlePeriodChange = (value: string) => {
+    let next = "7d";
+    if (value === "today") next = "today";
+    else if (value === "30") next = "30d";
+    else if (value === "month") next = "month";
+    else if (value === "custom") next = "custom";
+    setPeriod(next);
+    
+    // Update date inputs based on period
+    if (next === "custom") {
+      // For custom, dates come from Header (customFrom/customTo)
+      setDateFrom("");
+      setDateTo("");
+    } else {
+      const { from, to } = getPeriodDateRange(next) || { from: "", to: "" };
+      setDateFrom(from);
+      setDateTo(to);
+    }
+  };
+
   const handleRemoveLineItem = (index: number) => {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
@@ -253,7 +286,16 @@ export default function PurchasesList() {
   }
 
   return (
-    <PageLayout title="Purchases" searchPlaceholder="Search purchases...">
+    <PageLayout 
+      title="Purchases" 
+      searchPlaceholder="Search purchases..."
+      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
+      onPeriodChange={handlePeriodChange}
+      customFrom={customFrom}
+      customTo={customTo}
+      onCustomFromChange={setCustomFrom}
+      onCustomToChange={setCustomTo}
+    >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
         <StatCard
           label="Total Purchases"

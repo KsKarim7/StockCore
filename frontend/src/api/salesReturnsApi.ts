@@ -57,18 +57,18 @@ export interface CreateSalesReturnPayload {
   notes?: string;
 }
 
-const normalizeSalesReturn = (item: any): SalesReturn => {
+const normalizeSalesReturn = (item: Record<string, unknown>): SalesReturn => {
   return {
-    _id: item._id,
-    return_number: item.return_number,
-    customer: item.customer,
-    original_order_ref: item.original_order_ref,
-    lines: item.lines,
-    return_date: item.return_date,
-    notes: item.notes,
-    inventory_movements: item.inventory_movements,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
+    _id: item._id as string,
+    return_number: item.return_number as string,
+    customer: item.customer as SalesReturnCustomer,
+    original_order_ref: item.original_order_ref as string | undefined,
+    lines: item.lines as SalesReturnLine[],
+    return_date: item.return_date as string,
+    notes: item.notes as string | undefined,
+    inventory_movements: item.inventory_movements as string[] | undefined,
+    createdAt: item.createdAt as string,
+    updatedAt: item.updatedAt as string,
   };
 };
 

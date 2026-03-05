@@ -10,6 +10,10 @@ interface PageLayoutProps {
   searchPlaceholder?: string;
   periodValue?: string;
   onPeriodChange?: (value: string) => void;
+  customFrom?: string;
+  customTo?: string;
+  onCustomFromChange?: (value: string) => void;
+  onCustomToChange?: (value: string) => void;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
 }
@@ -20,6 +24,10 @@ export function PageLayout({
   searchPlaceholder,
   periodValue,
   onPeriodChange,
+  customFrom,
+  customTo,
+  onCustomFromChange,
+  onCustomToChange,
   searchValue,
   onSearchChange,
 }: PageLayoutProps) {
@@ -48,6 +56,10 @@ export function PageLayout({
           onSearchChange={onSearchChange}
           periodValue={periodValue}
           onPeriodChange={onPeriodChange}
+          customFrom={customFrom}
+          customTo={customTo}
+          onCustomFromChange={onCustomFromChange}
+          onCustomToChange={onCustomToChange}
           onMenuClick={() => setSidebarOpen(true)}
         />
         <main className="flex-1 p-4 md:p-6 overflow-auto">

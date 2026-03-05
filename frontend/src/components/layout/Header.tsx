@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Bell, ChevronDown, Menu } from "lucide-react";
+import { Search, ChevronDown, Menu } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -16,6 +16,10 @@ interface HeaderProps {
   onSearchChange?: (value: string) => void;
   periodValue?: string;
   onPeriodChange?: (value: string) => void;
+  customFrom?: string;
+  customTo?: string;
+  onCustomFromChange?: (value: string) => void;
+  onCustomToChange?: (value: string) => void;
   onMenuClick?: () => void;
 }
 
@@ -25,6 +29,10 @@ export function Header({
   onSearchChange,
   periodValue,
   onPeriodChange,
+  customFrom,
+  customTo,
+  onCustomFromChange,
+  onCustomToChange,
   onMenuClick,
 }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -89,6 +97,7 @@ export function Header({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="7">Last 7 days</SelectItem>
                 <SelectItem value="30">Last 30 days</SelectItem>
                 <SelectItem value="month">This month</SelectItem>
@@ -97,13 +106,26 @@ export function Header({
             </Select>
           </div>
 
-          {/* Bell */}
-          <button className="relative text-muted-foreground hover:text-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1.5 right-1.5 md:top-auto md:-top-1 md:-right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
-              3
-            </span>
-          </button>
+          {/* Custom date range inputs — show only when custom is selected */}
+          {periodValue === "custom" && (
+            <div className="hidden md:flex items-center gap-2">
+              <Input
+                type="date"
+                value={customFrom ?? ""}
+                onChange={(e) => onCustomFromChange?.(e.target.value)}
+                placeholder="From"
+                className="h-9 text-sm w-32"
+              />
+              <span className="text-xs text-muted-foreground">to</span>
+              <Input
+                type="date"
+                value={customTo ?? ""}
+                onChange={(e) => onCustomToChange?.(e.target.value)}
+                placeholder="To"
+                className="h-9 text-sm w-32"
+              />
+            </div>
+          )}
 
           {/* User */}
           <DropdownMenu>
@@ -112,12 +134,9 @@ export function Header({
                 {initials}
               </div>
               <span className="hidden md:block font-medium text-foreground">{user?.name ?? "User"}</span>
-              <span className="hidden md:block text-muted-foreground">•</span>
-              <span className="hidden md:block text-muted-foreground text-xs">{user?.role ?? "User"}</span>
               <ChevronDown className="hidden md:block h-3 w-3 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>Profile</DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"

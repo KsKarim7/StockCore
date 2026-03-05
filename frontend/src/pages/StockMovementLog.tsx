@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { useQuery } from "@tanstack/react-query";
+import { getPeriodDateRange } from "@/utils/dateRangeUtils";
 import axiosClient from "@/api/axiosClient";
 import { getStockMovements, type StockMovement, type StockMovementType, type StockMovementsResponse } from "@/api/stockLogApi";
 import { formatDateTime } from "@/utils/formatDate";
@@ -58,6 +59,9 @@ export default function StockMovementLog() {
   const [reasonFilter, setReasonFilter] = useState("all");
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
+  const [period, setPeriod] = useState("7d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [debouncedProductSearch, setDebouncedProductSearch] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<StockLogProduct | null>(null);
@@ -91,6 +95,15 @@ export default function StockMovementLog() {
     },
   });
 
+  const getQueryDateRange = () => {
+    if (period === "custom") {
+      return { from: customFrom, to: customTo };
+    }
+    return { from: fromDate, to: toDate };
+  };
+
+  const { from: queryFrom, to: queryTo } = getQueryDateRange();
+
   const {
     data: stockData,
     isLoading,
@@ -103,6 +116,9 @@ export default function StockMovementLog() {
       reasonFilter,
       fromDate,
       toDate,
+      period,
+      customFrom,
+      customTo,
     ],
     queryFn: () =>
       getStockMovements({
@@ -110,8 +126,8 @@ export default function StockMovementLog() {
         limit: 10,
         product_id: selectedProduct?._id ?? undefined,
         type: mapReasonFilterToType(reasonFilter),
-        from: fromDate || undefined,
-        to: toDate || undefined,
+        from: queryFrom || undefined,
+        to: queryTo || undefined,
       }),
     placeholderData: (previousData) => previousData,
   });
@@ -146,8 +162,36 @@ export default function StockMovementLog() {
     setPage(1);
   };
 
+  const handlePeriodChange = (value: string) => {
+    let next = "7d";
+    if (value === "today") next = "today";
+    else if (value === "30") next = "30d";
+    else if (value === "month") next = "month";
+    else if (value === "custom") next = "custom";
+    setPeriod(next);
+    
+    // Update date inputs based on period
+    if (next !== "custom") {
+      const { from, to } = getPeriodDateRange(next);
+      setFromDate(from);
+      setToDate(to);
+    } else {
+      setFromDate("");
+      setToDate("");
+    }
+  };
+
   return (
-    <PageLayout title="Stock Movement Log" searchPlaceholder="Search by product name or code...">
+    <PageLayout 
+      title="Stock Movement Log" 
+      searchPlaceholder="Search by product name or code..."
+      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
+      onPeriodChange={handlePeriodChange}
+      customFrom={customFrom}
+      customTo={customTo}
+      onCustomFromChange={setCustomFrom}
+      onCustomToChange={setCustomTo}
+    >
       <div className="flex items-center justify-between mb-4">
         <div className="hidden md:flex items-center gap-3">
           <Select

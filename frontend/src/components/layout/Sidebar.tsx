@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -42,7 +42,8 @@ interface AppSidebarProps {
 
 export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const location = useLocation();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   // Fetch settings to display logo
   const { data: settings } = useQuery({
@@ -58,6 +59,26 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
     return true;
   });
 
+  // Generate user initials
+  const getInitials = (name?: string | null) => {
+    if (!name) return "?";
+    const parts = name.trim().split(" ").filter(Boolean);
+    if (parts.length === 1) {
+      return parts[0].charAt(0).toUpperCase();
+    }
+    const first = parts[0].charAt(0);
+    const last = parts[parts.length - 1].charAt(0);
+    return `${first}${last}`.toUpperCase();
+  };
+
+  // Capitalize role
+  const capitalizeRole = (role?: string | null) => {
+    if (!role) return "User";
+    return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+  };
+
+  const userInitials = getInitials(user?.name);
+
   return (
     <aside
       className={cn(
@@ -66,18 +87,23 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       )}
     >
       {/* Logo */}
-      <div className="flex items-center gap-2 px-4 h-[60px] border-b border-sidebar-border">
-        {settings?.store_info.logo_url ? (
-          <img
-            src={settings.store_info.logo_url}
-            alt="Store Logo"
-            className="h-6 w-6 object-contain flex-shrink-0"
-          />
-        ) : (
-          <Package className="h-6 w-6 text-secondary flex-shrink-0" />
+      <Link to="/" className="flex flex-col px-4 h-[60px] border-b border-sidebar-border justify-center hover:opacity-80 transition-opacity">
+        <div className="flex items-center gap-2">
+          {settings?.store_info.logo_url ? (
+            <img
+              src={settings.store_info.logo_url}
+              alt="Store Logo"
+              className="h-6 w-6 object-contain flex-shrink-0"
+            />
+          ) : (
+            <Package className="h-6 w-6 text-secondary flex-shrink-0" />
+          )}
+          {!collapsed && <span className="text-lg font-bold tracking-tight">{settings?.store_info.store_name || "IMS"}</span>}
+        </div>
+        {!collapsed && settings?.store_info.physical_address && (
+          <p className="text-xs text-sidebar-foreground/60 leading-tight">{settings.store_info.physical_address}</p>
         )}
-        {!collapsed && <span className="text-lg font-bold tracking-tight">IMS</span>}
-      </div>
+      </Link>
 
       {/* Nav */}
       <nav className="flex-1 py-3 overflow-y-auto">
@@ -109,16 +135,21 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       <div className="border-t border-sidebar-border p-3">
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-secondary-foreground flex-shrink-0">
-            JD
+            {userInitials}
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">John Doe</p>
-              <p className="text-xs text-sidebar-foreground/60">Owner</p>
+              <p className="text-sm font-medium truncate">{user?.name || "User"}</p>
+              <p className="text-xs text-sidebar-foreground/60">{capitalizeRole(user?.role)}</p>
             </div>
           )}
           {!collapsed && (
-            <button className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors">
+            <button
+              className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+              onClick={async () => {
+                await logout();
+              }}
+            >
               <LogOut className="h-4 w-4" />
             </button>
           )}

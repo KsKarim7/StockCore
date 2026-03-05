@@ -4,12 +4,13 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/utils/currency";
+import { getPeriodDateRange } from "@/utils/dateRangeUtils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Package, Plus, FileText, FileSpreadsheet, Trash2, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getSalesReturns, createSalesReturn, type SalesReturn } from "@/api/salesReturnsApi";
+import { getSalesReturns, createSalesReturn, type SalesReturn, type SalesReturnsResponse } from "@/api/salesReturnsApi";
 import { getProducts as fetchProducts } from "@/api/productsApi";
 import {
   Sheet,
@@ -52,6 +53,9 @@ const returnStatusToStatusType = (status: string): StatusType => {
 export default function SalesReturnsList() {
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [period, setPeriod] = useState("7d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -65,14 +69,28 @@ export default function SalesReturnsList() {
   const [returnNotes, setReturnNotes] = useState("");
   const [lineItems, setLineItems] = useState<ReturnLineItem[]>([]);
 
+  const getDateRange = () => {
+    if (period === "custom") {
+      return { from: customFrom, to: customTo };
+    }
+    const range = getPeriodDateRange(period);
+    return range || { from: "", to: "" };
+  };
+
+  const { from: fromDate, to: toDate } = getDateRange();
+  const shouldFetch = period !== "custom" || !!(customFrom && customTo);
+
   // Fetch sales returns
-  const { data: returnsData, isLoading, isError, error } = useQuery({
-    queryKey: ["sales-returns", page],
+  const { data: returnsData, isLoading, isError, error } = useQuery<SalesReturnsResponse>({
+    queryKey: ["sales-returns", page, period, customFrom, customTo],
     queryFn: () =>
       getSalesReturns({
         page,
         limit: 10,
+        from: fromDate,
+        to: toDate,
       }),
+    enabled: shouldFetch,
   });
 
   // Fetch products for return creation
@@ -177,6 +195,15 @@ export default function SalesReturnsList() {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
+  const handlePeriodChange = (value: string) => {
+    let next = "7d";
+    if (value === "today") next = "today";
+    else if (value === "30") next = "30d";
+    else if (value === "month") next = "month";
+    else if (value === "custom") next = "custom";
+    setPeriod(next);
+  };
+
   // Export returns as CSV
   const handleExportCSV = () => {
     const headers = ["Return No", "Date", "Customer", "Order Ref", "Items", "Qty", "Notes"];
@@ -265,6 +292,12 @@ export default function SalesReturnsList() {
       searchPlaceholder="Search returns by number, customer, or order ref..."
       searchValue={searchTerm}
       onSearchChange={setSearchTerm}
+      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
+      onPeriodChange={handlePeriodChange}
+      customFrom={customFrom}
+      customTo={customTo}
+      onCustomFromChange={setCustomFrom}
+      onCustomToChange={setCustomTo}
     >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
         <StatCard

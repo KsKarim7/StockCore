@@ -1,9 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Package, ShoppingCart, Undo2, Truck,
   RefreshCw, Wallet, Activity, BarChart3, Settings, LogOut, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/auth/AuthContext";
+import { getSettings } from "@/api/settingsApi";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -25,6 +28,33 @@ interface MobileSidebarDrawerProps {
 
 export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps) {
   const location = useLocation();
+  const { user, logout } = useAuth();
+
+  // Fetch settings
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+  });
+
+  // Generate user initials
+  const getInitials = (name?: string | null) => {
+    if (!name) return "?";
+    const parts = name.trim().split(" ").filter(Boolean);
+    if (parts.length === 1) {
+      return parts[0].charAt(0).toUpperCase();
+    }
+    const first = parts[0].charAt(0);
+    const last = parts[parts.length - 1].charAt(0);
+    return `${first}${last}`.toUpperCase();
+  };
+
+  // Capitalize role
+  const capitalizeRole = (role?: string | null) => {
+    if (!role) return "User";
+    return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+  };
+
+  const userInitials = getInitials(user?.name);
 
   if (!open) return null;
 
@@ -43,10 +73,18 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
         </button>
 
         {/* Logo */}
-        <div className="flex items-center gap-2 px-4 h-[60px] border-b border-sidebar-border">
-          <Package className="h-6 w-6 text-secondary flex-shrink-0" />
-          <span className="text-lg font-bold tracking-tight">IMS</span>
-        </div>
+        <Link to="/" onClick={onClose} className="flex items-center gap-2 px-4 h-[60px] border-b border-sidebar-border hover:opacity-80 transition-opacity">
+          {settings?.store_info.logo_url ? (
+            <img
+              src={settings.store_info.logo_url}
+              alt="Store Logo"
+              className="h-6 w-6 object-contain flex-shrink-0"
+            />
+          ) : (
+            <Package className="h-6 w-6 text-secondary flex-shrink-0" />
+          )}
+          <span className="text-lg font-bold tracking-tight">{settings?.store_info.store_name || "IMS"}</span>
+        </Link>
 
         {/* Nav */}
         <nav className="flex-1 py-3 overflow-y-auto">
@@ -79,13 +117,18 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
         <div className="border-t border-sidebar-border p-3">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-secondary-foreground flex-shrink-0">
-              JD
+              {userInitials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">John Doe</p>
-              <p className="text-xs text-sidebar-foreground/60">Owner</p>
+              <p className="text-sm font-medium truncate">{user?.name || "User"}</p>
+              <p className="text-xs text-sidebar-foreground/60">{capitalizeRole(user?.role)}</p>
             </div>
-            <button className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
+            <button
+              className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+              onClick={async () => {
+                await logout();
+              }}
+            >
               <LogOut className="h-4 w-4" />
             </button>
           </div>
