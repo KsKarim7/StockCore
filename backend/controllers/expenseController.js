@@ -150,9 +150,13 @@ exports.createExpense = async (req, res) => {
   try {
     const settings = await Settings.findOne({});
     if (settings && settings.next_day_mode) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const tomorrow = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1,
+        0, 0, 0, 0
+      ));
       accounting_date = tomorrow;
     }
   } catch (settingsErr) {

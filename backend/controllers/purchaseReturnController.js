@@ -200,7 +200,7 @@ exports.createPurchaseReturn = async (req, res) => {
       // Validation 5: Check total returns (including this one) don't exceed purchased quantity
       const previousReturnsQuery = PurchaseReturn.find({
         purchase_number,
-        'lines.product_id': mongoose.Types.ObjectId(product_id),
+        'lines.product_id': new mongoose.Types.ObjectId(product_id),
       });
       if (useTransaction) previousReturnsQuery.session(session);
       const previousReturns = await previousReturnsQuery;
@@ -237,9 +237,13 @@ exports.createPurchaseReturn = async (req, res) => {
     try {
       const settings = await Settings.findOne({});
       if (settings && settings.next_day_mode) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0);
+        const now = new Date();
+        const tomorrow = new Date(Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate() + 1,
+          0, 0, 0, 0
+        ));
         accounting_date = tomorrow;
       }
     } catch (settingsErr) {
