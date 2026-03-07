@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const InventoryTransaction = require('../models/InventoryTransaction');
 const Counter = require('../models/Counter');
 const Purchase = require('../models/Purchase');
+const Settings = require('../models/Settings');
 
 const buildPagination = (total, page, limit) => {
   const pages = Math.max(1, Math.ceil(total / limit));
@@ -18,16 +19,27 @@ exports.getAllPurchaseReturns = async (req, res) => {
   const filter = {};
 
   if (from || to) {
-    filter.date = {};
+    const conditions = [];
+    const effectiveField = {
+      $ifNull: ['$accounting_date', '$date'],
+    };
+
     if (from) {
       const fromDate = new Date(from);
       fromDate.setHours(0, 0, 0, 0);
-      filter.date.$gte = fromDate;
+      conditions.push({ $gte: [effectiveField, fromDate] });
     }
+
     if (to) {
       const toDate = new Date(to);
       toDate.setHours(23, 59, 59, 999);
-      filter.date.$lte = toDate;
+      conditions.push({ $lte: [effectiveField, toDate] });
+    }
+
+    if (conditions.length === 1) {
+      filter.$expr = conditions[0];
+    } else if (conditions.length === 2) {
+      filter.$expr = { $and: conditions };
     }
   }
 
@@ -220,6 +232,20 @@ exports.createPurchaseReturn = async (req, res) => {
 
     const return_number = await Counter.nextVal('purchase_returns', useTransaction ? session : undefined);
 
+    // Determine accounting date if next day mode is enabled
+    let accounting_date;
+    try {
+      const settings = await Settings.findOne({});
+      if (settings && settings.next_day_mode) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
+        accounting_date = tomorrow;
+      }
+    } catch (settingsErr) {
+      // If settings lookup fails, proceed without accounting_date
+    }
+
     for (const line of lines) {
       const { product_id, qty } = line;
       const quantity = Number(qty);
@@ -280,6 +306,7 @@ exports.createPurchaseReturn = async (req, res) => {
           lines: returnLines,
           inventory_movements: movementIds,
           createdBy: req.user ? req.user._id : undefined,
+          accounting_date,
         },
       ],
       useTransaction ? { session } : {}

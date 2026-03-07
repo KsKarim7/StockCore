@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const Expense = require('../models/Expense');
+const Settings = require('../models/Settings');
 
 const paisaToTakaString = (value) => {
   if (value === null || value === undefined) return '0.00';
@@ -43,16 +44,27 @@ exports.getAllExpenses = async (req, res) => {
   const filter = { is_deleted: false };
 
   if (from || to) {
-    filter.date = {};
+    const conditions = [];
+    const effectiveField = {
+      $ifNull: ['$accounting_date', '$date'],
+    };
+
     if (from) {
       const fromDate = new Date(from);
       fromDate.setHours(0, 0, 0, 0);
-      filter.date.$gte = fromDate;
+      conditions.push({ $gte: [effectiveField, fromDate] });
     }
+
     if (to) {
       const toDate = new Date(to);
       toDate.setHours(23, 59, 59, 999);
-      filter.date.$lte = toDate;
+      conditions.push({ $lte: [effectiveField, toDate] });
+    }
+
+    if (conditions.length === 1) {
+      filter.$expr = conditions[0];
+    } else if (conditions.length === 2) {
+      filter.$expr = { $and: conditions };
     }
   }
 
@@ -133,12 +145,27 @@ exports.createExpense = async (req, res) => {
     });
   }
 
+  // Determine accounting date if next day mode is enabled
+  let accounting_date;
+  try {
+    const settings = await Settings.findOne({});
+    if (settings && settings.next_day_mode) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+      accounting_date = tomorrow;
+    }
+  } catch (settingsErr) {
+    // If settings lookup fails, proceed without accounting_date
+  }
+
   const expense = await Expense.create({
     date: date ? new Date(date) : undefined,
     party_name,
     description,
     total_amount_paisa,
     paid_amount_paisa,
+    accounting_date,
   });
 
   const transformed = convertExpenseMoney(

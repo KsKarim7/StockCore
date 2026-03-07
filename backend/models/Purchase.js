@@ -38,6 +38,10 @@ const purchaseSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    accounting_date: {
+      type: Date,
+      default: undefined,
+    },
   },
   { timestamps: true }
 );

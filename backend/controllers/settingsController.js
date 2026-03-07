@@ -168,6 +168,103 @@ exports.updateRetention = async (req, res) => {
   }
 };
 
+// Next Day Accounting Mode
+exports.getNextDayMode = async (req, res) => {
+  try {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    // First, try to auto-reset any expired next day mode in a single atomic operation
+    let settings = await Settings.findOneAndUpdate(
+      {
+        next_day_mode: true,
+        next_day_mode_activated_at: { $lt: startOfToday },
+      },
+      {
+        $set: {
+          next_day_mode: false,
+          next_day_mode_activated_at: null,
+        },
+      },
+      { new: true }
+    );
+
+    // If nothing to reset, just load or create the settings document
+    if (!settings) {
+      settings = await Settings.findOne({});
+      if (!settings) {
+        settings = new Settings({
+          store_info: {},
+          purge_after_days: 30,
+        });
+        await settings.save();
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        next_day_mode: !!settings.next_day_mode,
+        next_day_mode_activated_at: settings.next_day_mode_activated_at || null,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching next day mode settings',
+    });
+  }
+};
+
+exports.setNextDayMode = async (req, res) => {
+  // Only owner can change global accounting mode
+  if (!req.user || req.user.role !== 'owner') {
+    return res.status(403).json({
+      success: false,
+      message: 'Only owner can update next day mode',
+    });
+  }
+
+  try {
+    const { next_day_mode } = req.body || {};
+
+    if (typeof next_day_mode !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'next_day_mode must be a boolean',
+      });
+    }
+
+    let settings = await Settings.findOne({});
+
+    if (!settings) {
+      settings = new Settings({
+        store_info: {},
+        purge_after_days: 30,
+      });
+    }
+
+    settings.next_day_mode = next_day_mode;
+    settings.next_day_mode_activated_at = next_day_mode ? new Date() : null;
+
+    await settings.save();
+
+    return res.json({
+      success: true,
+      data: {
+        next_day_mode: settings.next_day_mode,
+        next_day_mode_activated_at: settings.next_day_mode_activated_at || null,
+      },
+      message: `Next day mode ${settings.next_day_mode ? 'enabled' : 'disabled'}`,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating next day mode',
+    });
+  }
+};
+
 // User Management
 exports.listUsers = async (req, res) => {
   // Check authorization

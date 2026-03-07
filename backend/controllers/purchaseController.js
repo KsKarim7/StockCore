@@ -3,6 +3,7 @@ const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
 const InventoryTransaction = require('../models/InventoryTransaction');
 const Counter = require('../models/Counter');
+const Settings = require('../models/Settings');
 
 const paisaToTakaString = (value) => {
   if (value === null || value === undefined) return '0.00';
@@ -59,16 +60,27 @@ exports.getAllPurchases = async (req, res) => {
   const filter = { is_deleted: false };
 
   if (from || to) {
-    filter.date = {};
+    const conditions = [];
+    const effectiveField = {
+      $ifNull: ['$accounting_date', '$date'],
+    };
+
     if (from) {
       const fromDate = new Date(from);
       fromDate.setHours(0, 0, 0, 0);
-      filter.date.$gte = fromDate;
+      conditions.push({ $gte: [effectiveField, fromDate] });
     }
+
     if (to) {
       const toDate = new Date(to);
       toDate.setHours(23, 59, 59, 999);
-      filter.date.$lte = toDate;
+      conditions.push({ $lte: [effectiveField, toDate] });
+    }
+
+    if (conditions.length === 1) {
+      filter.$expr = conditions[0];
+    } else if (conditions.length === 2) {
+      filter.$expr = { $and: conditions };
     }
   }
 
@@ -225,6 +237,20 @@ exports.createPurchase = async (req, res) => {
     );
     const due_amount_paisa = net_amount_paisa - paid_amount_paisa;
 
+    // Determine accounting date if next day mode is enabled
+    let accounting_date;
+    try {
+      const settings = await Settings.findOne({});
+      if (settings && settings.next_day_mode) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
+        accounting_date = tomorrow;
+      }
+    } catch (settingsErr) {
+      // If settings lookup fails, proceed without accounting_date
+    }
+
     const [purchase] = await Purchase.create(
       [
         {
@@ -235,6 +261,7 @@ exports.createPurchase = async (req, res) => {
           paid_amount_paisa,
           due_amount_paisa,
           inventory_movements: movementIds,
+          accounting_date,
         },
       ],
       useTransaction ? { session } : {}

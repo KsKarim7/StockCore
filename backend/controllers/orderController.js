@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const InventoryTransaction = require('../models/InventoryTransaction');
 const Customer = require('../models/Customer');
 const Counter = require('../models/Counter');
+const Settings = require('../models/Settings');
 
 const paisaToTakaString = (value) => {
   if (value === null || value === undefined) return '0.00';
@@ -76,15 +77,27 @@ exports.getAllOrders = async (req, res) => {
   }
 
   if (from || to) {
-    filter.createdAt = {};
+    const conditions = [];
+    const effectiveField = {
+      $ifNull: ['$accounting_date', '$createdAt'],
+    };
+
     if (from) {
-      filter.createdAt.$gte = new Date(from);
+      const fromDate = new Date(from);
+      fromDate.setHours(0, 0, 0, 0);
+      conditions.push({ $gte: [effectiveField, fromDate] });
     }
+
     if (to) {
       const toDate = new Date(to);
-      // Set to end of day (23:59:59.999) to include all orders created on this day
       toDate.setHours(23, 59, 59, 999);
-      filter.createdAt.$lte = toDate;
+      conditions.push({ $lte: [effectiveField, toDate] });
+    }
+
+    if (conditions.length === 1) {
+      filter.$expr = conditions[0];
+    } else if (conditions.length === 2) {
+      filter.$expr = { $and: conditions };
     }
   }
 
@@ -198,6 +211,19 @@ exports.createOrder = async (req, res) => {
   }
 
   try {
+    // Determine accounting date if next day mode is enabled
+    let accounting_date;
+    try {
+      const settings = await Settings.findOne({});
+      if (settings && settings.next_day_mode) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
+        accounting_date = tomorrow;
+      }
+    } catch (settingsErr) {
+      // If settings lookup fails, proceed without accounting_date
+    }
     let customerSnapshot = {
       customer_id: undefined,
       name: undefined,
@@ -362,6 +388,7 @@ exports.createOrder = async (req, res) => {
                 : [],
             amount_received_paisa,
             amount_due_paisa,
+            accounting_date,
           },
         ],
         useTransaction ? { session: session } : {}
@@ -388,9 +415,10 @@ exports.createOrder = async (req, res) => {
                       date: new Date(),
                     },
                   ]
-                  : [],
+                : [],
               amount_received_paisa,
               amount_due_paisa,
+              accounting_date,
             },
           ],
           useTransaction ? { session: session } : {}

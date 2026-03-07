@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, ChevronDown, Menu } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,6 +9,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/components/ui/use-toast";
+import { getNextDayMode, setNextDayMode } from "@/api/nextDayApi";
 
 interface HeaderProps {
   searchPlaceholder?: string;
@@ -38,6 +41,74 @@ export function Header({
   const [searchOpen, setSearchOpen] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { toast } = useToast();
+  const [nextDayMode, setNextDayModeState] = useState(false);
+  const [isLoadingNextDayMode, setIsLoadingNextDayMode] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadMode = async () => {
+      setIsLoadingNextDayMode(true);
+      try {
+        const state = await getNextDayMode();
+        if (isMounted) {
+          setNextDayModeState(state.next_day_mode);
+        }
+      } catch (error) {
+        // Silent failure – UI will just show toggle as off
+      } finally {
+        if (isMounted) {
+          setIsLoadingNextDayMode(false);
+        }
+      }
+    };
+
+    void loadMode();
+
+    const intervalId = window.setInterval(() => {
+      void getNextDayMode()
+        .then((state) => {
+          if (!isMounted) return;
+          if (nextDayMode && !state.next_day_mode) {
+            setNextDayModeState(false);
+            toast({
+              title: "Next Day Mode turned off",
+              description: "Next Day Mode automatically turned off at midnight.",
+            });
+          } else if (!nextDayMode && state.next_day_mode) {
+            setNextDayModeState(true);
+          }
+        })
+        .catch(() => {
+          // Ignore polling errors
+        });
+    }, 60000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [nextDayMode, toast]);
+
+  const handleToggleNextDayMode = async (checked: boolean) => {
+    setNextDayModeState(checked);
+    try {
+      const state = await setNextDayMode(checked);
+      setNextDayModeState(state.next_day_mode);
+      toast({
+        title: state.next_day_mode ? "Next Day Mode ON" : "Next Day Mode OFF",
+        description: state.next_day_mode
+          ? "New records will count as tomorrow's."
+          : "New records will count as today's.",
+      });
+    } catch (error) {
+      setNextDayModeState(!checked);
+      toast({
+        title: "Failed to update Next Day Mode",
+        variant: "destructive",
+      });
+    }
+  };
 
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
@@ -87,6 +158,17 @@ export function Header({
 
         {/* Right side */}
         <div className="flex items-center gap-2 md:gap-4">
+          {/* Next Day toggle — hidden on mobile */}
+          <div className="hidden md:flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Next Day</span>
+            <Switch
+              checked={nextDayMode}
+              disabled={isLoadingNextDayMode}
+              onCheckedChange={handleToggleNextDayMode}
+              className={nextDayMode ? "bg-destructive data-[state=checked]:bg-destructive" : "bg-emerald-500"}
+            />
+          </div>
+
           {/* Date range — hidden on mobile */}
           <div className="hidden md:block">
             <Select

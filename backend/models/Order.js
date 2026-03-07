@@ -54,6 +54,10 @@ const orderSchema = new mongoose.Schema(
       default: false,
     },
     retain_until: { type: Date },
+    accounting_date: {
+      type: Date,
+      default: undefined,
+    },
   },
   { timestamps: true }
 );

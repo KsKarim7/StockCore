@@ -5,6 +5,8 @@ const {
   updateStoreInfo,
   getRetention,
   updateRetention,
+  getNextDayMode,
+  setNextDayMode,
   listUsers,
   createUser,
   updateUser,
@@ -28,6 +30,10 @@ router.patch(
   [body('purge_after_days').isInt({ min: 7, max: 365 }).withMessage('Purge days must be between 7 and 365')],
   updateRetention
 );
+
+// Next Day Accounting Mode
+router.get('/next-day-mode', protect, getNextDayMode);
+router.post('/next-day-mode', protect, setNextDayMode);
 
 // User Management
 router.get('/users', protect, listUsers);

@@ -42,6 +42,10 @@ const salesReturnSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    accounting_date: {
+      type: Date,
+      default: undefined,
+    },
   },
   { timestamps: true }
 );

@@ -21,6 +21,14 @@ const settingsSchema = new mongoose.Schema(
       min: 7,
       max: 365,
     },
+    next_day_mode: {
+      type: Boolean,
+      default: false,
+    },
+    next_day_mode_activated_at: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

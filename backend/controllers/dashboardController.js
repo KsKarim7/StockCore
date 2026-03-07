@@ -97,8 +97,15 @@ exports.getDashboardStats = async (req, res) => {
 
     const todaySalesPromise = Order.aggregate([
       {
+        $addFields: {
+          effective_date: {
+            $ifNull: ['$accounting_date', '$createdAt'],
+          },
+        },
+      },
+      {
         $match: {
-          createdAt: { $gte: getStartOfToday(), $lte: getEndOfToday() },
+          effective_date: { $gte: getStartOfToday(), $lte: getEndOfToday() },
           status: { $in: ['Paid', 'Partially Paid'] },
           is_deleted: false,
         },
@@ -115,7 +122,26 @@ exports.getDashboardStats = async (req, res) => {
       });
 
     const totalOrdersThisMonthPromise = Order.countDocuments({
-      createdAt: { $gte: getStartOfMonth(), $lte: getEndOfMonth() },
+      $expr: {
+        $and: [
+          {
+            $gte: [
+              {
+                $ifNull: ['$accounting_date', '$createdAt'],
+              },
+              getStartOfMonth(),
+            ],
+          },
+          {
+            $lte: [
+              {
+                $ifNull: ['$accounting_date', '$createdAt'],
+              },
+              getEndOfMonth(),
+            ],
+          },
+        ],
+      },
       status: { $ne: 'Cancelled' },
       is_deleted: false,
     })
@@ -164,8 +190,15 @@ exports.getDashboardStats = async (req, res) => {
 
     const currentAgg = await Order.aggregate([
       {
+        $addFields: {
+          effective_date: {
+            $ifNull: ['$accounting_date', '$createdAt'],
+          },
+        },
+      },
+      {
         $match: {
-          createdAt: { $gte: startCurrent, $lte: endCurrent },
+          effective_date: { $gte: startCurrent, $lte: endCurrent },
           status: { $ne: 'Cancelled' },
           is_deleted: false,
         },
@@ -173,7 +206,7 @@ exports.getDashboardStats = async (req, res) => {
       {
         $group: {
           _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+            $dateToString: { format: '%Y-%m-%d', date: '$effective_date' },
           },
           total: { $sum: '$total_paisa' },
         },
@@ -183,8 +216,15 @@ exports.getDashboardStats = async (req, res) => {
 
     const previousAgg = await Order.aggregate([
       {
+        $addFields: {
+          effective_date: {
+            $ifNull: ['$accounting_date', '$createdAt'],
+          },
+        },
+      },
+      {
         $match: {
-          createdAt: { $gte: startPrevious, $lte: endPrevious },
+          effective_date: { $gte: startPrevious, $lte: endPrevious },
           status: { $ne: 'Cancelled' },
           is_deleted: false,
         },
@@ -192,7 +232,7 @@ exports.getDashboardStats = async (req, res) => {
       {
         $group: {
           _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+            $dateToString: { format: '%Y-%m-%d', date: '$effective_date' },
           },
           total: { $sum: '$total_paisa' },
         },
