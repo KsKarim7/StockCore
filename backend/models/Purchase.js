@@ -42,6 +42,11 @@ const purchaseSchema = new mongoose.Schema(
       type: Date,
       default: undefined,
     },
+    status: {
+      type: String,
+      enum: ['Pending', 'Partially Paid', 'Paid', 'Cancelled'],
+      default: 'Pending',
+    },
   },
   { timestamps: true }
 );

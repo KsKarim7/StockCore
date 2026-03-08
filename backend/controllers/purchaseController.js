@@ -254,6 +254,14 @@ exports.createPurchase = async (req, res) => {
       // If settings lookup fails, proceed without accounting_date
     }
 
+    // Determine initial status based on payment
+    let status = 'Pending';
+    if (due_amount_paisa <= 0) {
+      status = 'Paid';
+    } else if (paid_amount_paisa > 0) {
+      status = 'Partially Paid';
+    }
+
     const [purchase] = await Purchase.create(
       [
         {
@@ -265,6 +273,7 @@ exports.createPurchase = async (req, res) => {
           due_amount_paisa,
           inventory_movements: movementIds,
           accounting_date,
+          status,
         },
       ],
       useTransaction ? { session } : {}
@@ -280,6 +289,168 @@ exports.createPurchase = async (req, res) => {
     );
 
     return res.status(201).json({
+      success: true,
+      data: { purchase: transformed },
+    });
+  } catch (err) {
+    if (useTransaction) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    throw err;
+  }
+};
+
+exports.addPayment = async (req, res) => {
+  const { id } = req.params;
+  const { amount, note } = req.body;
+
+  const paymentPaisa = Math.round(parseFloat(amount || '0') * 100);
+
+  if (!Number.isFinite(paymentPaisa) || paymentPaisa <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Payment amount must be positive',
+    });
+  }
+
+  const purchase = await Purchase.findOne({ _id: id, is_deleted: false });
+
+  if (!purchase) {
+    return res
+      .status(404)
+      .json({ success: false, message: 'Purchase not found' });
+  }
+
+  const currentDue = Number(purchase.due_amount_paisa || 0);
+
+  if (paymentPaisa > currentDue) {
+    return res.status(400).json({
+      success: false,
+      message: 'Payment amount exceeds due amount',
+    });
+  }
+
+  purchase.paid_amount_paisa = Number(purchase.paid_amount_paisa || 0) + paymentPaisa;
+  purchase.due_amount_paisa = Number(purchase.net_amount_paisa || 0) - purchase.paid_amount_paisa;
+
+  if (purchase.due_amount_paisa <= 0) {
+    purchase.status = 'Paid';
+  } else if (purchase.paid_amount_paisa > 0) {
+    purchase.status = 'Partially Paid';
+  }
+
+  await purchase.save();
+
+  const transformed = convertPurchaseMoney(
+    purchase.toObject({ virtuals: true })
+  );
+
+  return res.json({
+    success: true,
+    data: { purchase: transformed },
+  });
+};
+
+exports.cancelPurchase = async (req, res) => {
+  const { id } = req.params;
+
+  const session = await mongoose.startSession();
+  let useTransaction = true;
+
+  try {
+    session.startTransaction();
+  } catch (err) {
+    // MongoDB not running as replica set, proceed without transaction
+    useTransaction = false;
+  }
+
+  try {
+    const purchaseQuery = Purchase.findOne({
+      _id: id,
+      is_deleted: false,
+    });
+    if (useTransaction) purchaseQuery.session(session);
+    const purchase = await purchaseQuery;
+
+    if (!purchase) {
+      if (useTransaction) {
+        await session.abortTransaction();
+      }
+      session.endSession();
+      return res
+        .status(404)
+        .json({ success: false, message: 'Purchase not found' });
+    }
+
+    if (purchase.status === 'Cancelled') {
+      if (useTransaction) {
+        await session.abortTransaction();
+      }
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Purchase already cancelled',
+      });
+    }
+
+    for (const line of purchase.lines) {
+      const productQuery2 = Product.findOne({
+        _id: line.product_id,
+        is_deleted: false,
+      });
+      if (useTransaction) productQuery2.session(session);
+      const product = await productQuery2;
+
+      if (!product) {
+        if (useTransaction) {
+          await session.abortTransaction();
+        }
+        session.endSession();
+        return res.status(404).json({
+          success: false,
+          message: 'Product not found for purchase line',
+        });
+      }
+
+      product.on_hand = (product.on_hand || 0) - line.qty;
+      await product.save({ session: useTransaction ? session : undefined });
+
+      const movement_id = await Counter.nextVal('movements', useTransaction ? session : undefined);
+
+      await InventoryTransaction.create(
+        [
+          {
+            movement_id,
+            product_id: product._id,
+            product_code: product.product_code,
+            product_name: product.name,
+            qty: line.qty,
+            type: 'adjustment',
+            source: {
+              doc_type: 'purchase_cancel',
+              doc_number: purchase.purchase_number,
+            },
+            createdBy: req.user ? req.user._id : undefined,
+          },
+        ],
+        useTransaction ? { session } : {}
+      );
+    }
+
+    purchase.status = 'Cancelled';
+    await purchase.save({ session: useTransaction ? session : undefined });
+
+    if (useTransaction) {
+      await session.commitTransaction();
+    }
+    session.endSession();
+
+    const transformed = convertPurchaseMoney(
+      purchase.toObject({ virtuals: true })
+    );
+
+    return res.json({
       success: true,
       data: { purchase: transformed },
     });

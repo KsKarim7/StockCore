@@ -2,14 +2,16 @@ import { useState } from "react";
 import { AxiosError } from "axios";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { StatCard } from "@/components/shared/StatCard";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/utils/currency";
+import { formatDateTime } from "@/utils/formatDate";
 import { getPeriodDateRange } from "@/utils/dateRangeUtils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Truck, DollarSign, AlertCircle, Plus, FileText, FileSpreadsheet, Trash2 } from "lucide-react";
+import { Truck, DollarSign, AlertCircle, Plus, FileText, FileSpreadsheet, Trash2, Eye } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchases, createPurchase, type Purchase, type PurchasesResponse } from "@/api/purchasesApi";
+import { getPurchases, createPurchase, addPurchasePayment, cancelPurchase, type Purchase, type PurchasesResponse } from "@/api/purchasesApi";
 import { getProducts as fetchProducts } from "@/api/productsApi";
 import {
   Sheet,
@@ -19,6 +21,23 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -32,6 +51,15 @@ const toPriceNumber = (value: string | number): number => {
   }
   return paisaToTaka(value);
 };
+
+interface AxiosErrorType {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+}
 
 interface PurchaseLineItem {
   product_id: string;
@@ -55,6 +83,16 @@ export default function PurchasesList() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
+
+  // Payment and cancel dialog state
+  const [payingPurchase, setPayingPurchase] = useState<Purchase | null>(null);
+  const [cancellingPurchase, setCancellingPurchase] = useState<Purchase | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+
+  // View purchase sheet state
+  const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -160,6 +198,43 @@ export default function PurchasesList() {
     },
   });
 
+  const addPaymentMutation = useMutation({
+    mutationFn: ({ id, amount, note }: { id: string; amount: number; note?: string }) =>
+      addPurchasePayment(id, { amount, note }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchases"], exact: false });
+      toast({ title: "Payment recorded successfully" });
+      setPayingPurchase(null);
+      setPaymentAmount("");
+      setPaymentNote("");
+    },
+    onError: (error: unknown) => {
+      const errorMessage = (error as AxiosErrorType)?.response?.data?.message || (error as Error)?.message || "Something went wrong";
+      toast({
+        title: "Failed to record payment",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelPurchaseMutation = useMutation({
+    mutationFn: (id: string) => cancelPurchase(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchases"], exact: false });
+      toast({ title: "Purchase cancelled successfully" });
+      setCancellingPurchase(null);
+    },
+    onError: (error: unknown) => {
+      const errorMessage = (error as AxiosErrorType)?.response?.data?.message || (error as Error)?.message || "Something went wrong";
+      toast({
+        title: "Failed to cancel purchase",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleAddLineItem = () => {
     if (!selectedProduct || quantity <= 0 || !buyingPrice) {
       toast({
@@ -214,6 +289,58 @@ export default function PurchasesList() {
 
   const handleRemoveLineItem = (index: number) => {
     setLineItems(lineItems.filter((_, i) => i !== index));
+  };
+
+  const handleOpenPaymentDialog = (purchase: Purchase) => {
+    const amountDue = toPriceNumber(purchase.due_amount_paisa);
+    setPayingPurchase(purchase);
+    setPaymentAmount(amountDue.toFixed(2));
+    setPaymentNote("");
+  };
+
+  const handleSubmitPayment = () => {
+    if (!payingPurchase) return;
+
+    const enteredAmount = parseFloat(paymentAmount || "0");
+    const dueAmount = toPriceNumber(payingPurchase.due_amount_paisa);
+
+    if (enteredAmount > dueAmount) {
+      toast({
+        title: "Amount exceeds due",
+        description: `Maximum payable amount is ${formatCurrency(dueAmount)}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (enteredAmount <= 0 || Number.isNaN(enteredAmount)) {
+      toast({
+        title: "Invalid amount",
+        description: "Payment amount must be greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const amount = enteredAmount;
+    addPaymentMutation.mutate({
+      id: payingPurchase._id,
+      amount,
+      note: paymentNote || undefined,
+    });
+  };
+
+  const handleOpenCancelDialog = (purchase: Purchase) => {
+    setCancellingPurchase(purchase);
+  };
+
+  const handleConfirmCancel = () => {
+    if (!cancellingPurchase) return;
+    cancelPurchaseMutation.mutate(cancellingPurchase._id);
+  };
+
+  const handleOpenViewSheet = (purchase: Purchase) => {
+    setViewingPurchase(purchase);
   };
 
   // Export purchases as CSV
@@ -284,6 +411,21 @@ export default function PurchasesList() {
       });
     }
   };
+
+  function purchaseStatusToStatusType(status: string): import("@/components/shared/StatusBadge").StatusType {
+    switch (status) {
+      case "Pending":
+        return "confirmed";
+      case "Partially Paid":
+        return "partial";
+      case "Paid":
+        return "paid";
+      case "Cancelled":
+        return "cancelled";
+      default:
+        return "confirmed";
+    }
+  }
 
   if (isError) {
     return (
@@ -397,7 +539,7 @@ export default function PurchasesList() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                {["Purchase No", "Date", "Products", "Net Amount", "Paid", "Due"].map((h) => (
+                {["Purchase No", "Date", "Products", "Net Amount", "Paid", "Due", "Actions"].map((h) => (
                   <th key={h} className="text-left text-table-header uppercase text-muted-foreground px-4 py-3">
                     {h}
                   </th>
@@ -408,7 +550,7 @@ export default function PurchasesList() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-border">
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <Skeleton className="h-4 w-20" />
                       </td>
@@ -417,7 +559,7 @@ export default function PurchasesList() {
                 ))
               ) : purchases.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     No purchases found
                   </td>
                 </tr>
@@ -445,6 +587,39 @@ export default function PurchasesList() {
                     <td className="px-4 py-3 text-table-body text-success">{formatCurrency(toPriceNumber(p.paid_amount_paisa))}</td>
                     <td className="px-4 py-3 text-table-body text-destructive font-medium">
                       {toPriceNumber(p.due_amount_paisa) > 0 ? formatCurrency(toPriceNumber(p.due_amount_paisa)) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-table-body">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenViewSheet(p)}
+                          className="text-xs"
+                          title="View purchase details"
+                        >
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                        {toPriceNumber(p.due_amount_paisa) > 0 && p.status !== "Cancelled" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenPaymentDialog(p)}
+                            className="text-xs"
+                          >
+                            Pay
+                          </Button>
+                        )}
+                        {p.status !== "Cancelled" && p.status !== "Paid" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenCancelDialog(p)}
+                            className="text-xs text-destructive hover:text-destructive"
+                          >
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -657,6 +832,156 @@ export default function PurchasesList() {
               {createPurchaseMutation.isPending ? "Recording..." : "Record Purchase"}
             </Button>
           </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Payment Dialog */}
+      <Dialog open={payingPurchase !== null} onOpenChange={(open) => !open && setPayingPurchase(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Payment</DialogTitle>
+            <DialogDescription>
+              Add a payment for purchase {payingPurchase?.purchase_number}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Amount Due (Tk)</label>
+              <p className="text-lg font-semibold text-muted-foreground">
+                {payingPurchase ? formatCurrency(toPriceNumber(payingPurchase.due_amount_paisa)) : "—"}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Amount Paying (Tk) *</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                max={payingPurchase ? toPriceNumber(payingPurchase.due_amount_paisa) : undefined}
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="Enter amount"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Note (Optional)</label>
+              <Input
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="Payment note or reference"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPayingPurchase(null)}
+              disabled={addPaymentMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitPayment}
+              disabled={addPaymentMutation.isPending || !paymentAmount}
+            >
+              {addPaymentMutation.isPending ? "Recording..." : "Record Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Purchase AlertDialog */}
+      <AlertDialog open={cancellingPurchase !== null} onOpenChange={(open) => !open && setCancellingPurchase(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Purchase</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will cancel the purchase and restore stock. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogCancel disabled={cancelPurchaseMutation.isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirmCancel}
+            disabled={cancelPurchaseMutation.isPending}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {cancelPurchaseMutation.isPending ? "Cancelling..." : "Cancel Purchase"}
+          </AlertDialogAction>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* View Purchase Sheet */}
+      <Sheet open={viewingPurchase !== null} onOpenChange={(open) => !open && setViewingPurchase(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Purchase Details</SheetTitle>
+            <SheetDescription>
+              {viewingPurchase?.purchase_number}
+            </SheetDescription>
+          </SheetHeader>
+
+          {viewingPurchase && (
+            <div className="mt-6 space-y-6">
+              {/* Purchase Header */}
+              <div className="space-y-2 border-b pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Date</p>
+                    <p className="font-medium">{formatDateTime(viewingPurchase.date)}</p>
+                  </div>
+                  <StatusBadge status={purchaseStatusToStatusType(viewingPurchase.status)} />
+                </div>
+              </div>
+
+              {/* Line Items */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Items</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50 border-b">
+                      <tr>
+                        <th className="text-left px-2 py-2">Product</th>
+                        <th className="text-center px-2 py-2">Qty</th>
+                        <th className="text-right px-2 py-2">Unit Price</th>
+                        <th className="text-right px-2 py-2">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingPurchase.lines.map((line, idx) => (
+                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="px-2 py-2">
+                            <div className="font-medium">{line.product_name}</div>
+                            <div className="text-muted-foreground">{line.product_code}</div>
+                          </td>
+                          <td className="text-center px-2 py-2">{line.qty}</td>
+                          <td className="text-right px-2 py-2">{formatCurrency(toPriceNumber(line.buying_price_paisa))}</td>
+                          <td className="text-right px-2 py-2 font-medium">{formatCurrency(toPriceNumber(line.line_total_paisa))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Payment Summary */}
+              <div className="space-y-2 bg-muted/30 p-3 rounded-lg">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total:</span>
+                  <span className="font-medium">{formatCurrency(toPriceNumber(viewingPurchase.net_amount_paisa))}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Paid:</span>
+                  <span className="font-medium text-success">{formatCurrency(toPriceNumber(viewingPurchase.paid_amount_paisa))}</span>
+                </div>
+                <div className="border-t pt-2 mt-2 flex justify-between font-medium">
+                  <span>Due:</span>
+                  <span className="text-destructive">{formatCurrency(toPriceNumber(viewingPurchase.due_amount_paisa))}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </PageLayout>

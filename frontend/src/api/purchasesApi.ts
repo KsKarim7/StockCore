@@ -17,6 +17,7 @@ export interface Purchase {
   net_amount_paisa: number;
   paid_amount_paisa: number;
   due_amount_paisa: number;
+  status: string;
   inventory_movements?: string[];
   createdAt: string;
   updatedAt: string;
@@ -60,6 +61,7 @@ const normalizePurchase = (
     net_amount_paisa: item.net_amount_paisa,
     paid_amount_paisa: item.paid_amount_paisa,
     due_amount_paisa: item.due_amount_paisa,
+    status: item.status || 'Pending',
     inventory_movements: item.inventory_movements,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -102,6 +104,29 @@ export const createPurchase = async (
 
   if (!response.data?.success) {
     throw new Error(response.data?.message || "Failed to create purchase");
+  }
+
+  return normalizePurchase(response.data.data.purchase);
+};
+
+export const addPurchasePayment = async (
+  id: string,
+  data: { amount: number; note?: string }
+): Promise<Purchase> => {
+  const response = await axiosClient.post(`/purchases/${id}/pay`, data);
+
+  if (!response.data?.success) {
+    throw new Error(response.data?.message || "Failed to add payment");
+  }
+
+  return normalizePurchase(response.data.data.purchase);
+};
+
+export const cancelPurchase = async (id: string): Promise<Purchase> => {
+  const response = await axiosClient.post(`/purchases/${id}/cancel`);
+
+  if (!response.data?.success) {
+    throw new Error(response.data?.message || "Failed to cancel purchase");
   }
 
   return normalizePurchase(response.data.data.purchase);
