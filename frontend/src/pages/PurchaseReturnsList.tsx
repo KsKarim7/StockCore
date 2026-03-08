@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { AxiosError } from "axios";
+import { usePeriod } from "@/context/PeriodContext";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { StatCard } from "@/components/shared/StatCard";
 import { Button } from "@/components/ui/button";
@@ -41,9 +42,7 @@ interface AxiosErrorResponse {
 export default function PurchaseReturnsList() {
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
-  const [period, setPeriod] = useState("7d");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const { period, customFrom, setCustomFrom, customTo, setCustomTo } = usePeriod();
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -72,8 +71,8 @@ export default function PurchaseReturnsList() {
       getPurchaseReturns({
         page,
         limit: 10,
-        from: fromDate,
-        to: toDate,
+        from: fromDate || undefined,
+        to: toDate || undefined,
       }),
     enabled: shouldFetch,
   });
@@ -191,16 +190,6 @@ export default function PurchaseReturnsList() {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
-  const handlePeriodChange = (value: string) => {
-    let next = "7d";
-    if (value === "today") next = "today";
-    else if (value === "30") next = "30d";
-    else if (value === "month") next = "month";
-    else if (value === "custom") next = "custom";
-    setPeriod(next);
-    setPage(1);
-  };
-
   // Export returns as CSV
   const handleExportCSV = () => {
     const headers = ["Return No", "Purchase No", "Date", "Items", "Qty"];
@@ -238,12 +227,6 @@ export default function PurchaseReturnsList() {
       searchPlaceholder="Search purchase returns..."
       searchValue={searchTerm}
       onSearchChange={setSearchTerm}
-      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
-      onPeriodChange={handlePeriodChange}
-      customFrom={customFrom}
-      customTo={customTo}
-      onCustomFromChange={setCustomFrom}
-      onCustomToChange={setCustomTo}
     >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
         <StatCard label="Total Returns" value={totalReturns.toString()} icon={Package} iconColor="text-primary" iconBg="bg-primary/10" />

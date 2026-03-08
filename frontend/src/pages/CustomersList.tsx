@@ -199,6 +199,7 @@ export default function CustomersList() {
     <PageLayout
       title="Customers"
       searchPlaceholder="Search customers by name or phone..."
+      showPeriodFilter={false}
       searchValue={search}
       onSearchChange={(val) => setSearch(val)}
     >

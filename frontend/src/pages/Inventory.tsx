@@ -469,6 +469,7 @@ export default function Inventory() {
     <PageLayout
       title="Inventory"
       searchPlaceholder="Search products by name or code..."
+      showPeriodFilter={false}
       searchValue={search}
       onSearchChange={(value) => setSearch(value)}
     >

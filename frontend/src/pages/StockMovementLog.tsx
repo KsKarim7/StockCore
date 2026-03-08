@@ -192,6 +192,7 @@ export default function StockMovementLog() {
     <PageLayout
       title="Stock Movement Log"
       searchPlaceholder="Search products to filter..."
+      showPeriodFilter={false}
       searchValue={productSearch}
       onSearchChange={(val) => { setProductSearch(val); setShowProductResults(true); }}
       periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}

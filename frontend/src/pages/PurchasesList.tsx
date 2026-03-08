@@ -412,12 +412,6 @@ export default function PurchasesList() {
     <PageLayout 
       title="Purchases" 
       searchPlaceholder="Search purchases..."
-      periodValue={period === "today" ? "today" : period === "7d" ? "7" : period === "30d" ? "30" : period === "month" ? "month" : "custom"}
-      onPeriodChange={handlePeriodChange}
-      customFrom={customFrom}
-      customTo={customTo}
-      onCustomFromChange={setCustomFrom}
-      onCustomToChange={setCustomTo}
     >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
         <StatCard

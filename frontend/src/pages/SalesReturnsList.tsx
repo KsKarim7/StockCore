@@ -86,8 +86,8 @@ export default function SalesReturnsList() {
       getSalesReturns({
         page,
         limit: 10,
-        from: fromDate,
-        to: toDate,
+        from: fromDate || undefined,
+        to: toDate || undefined,
       }),
     enabled: shouldFetch,
   });

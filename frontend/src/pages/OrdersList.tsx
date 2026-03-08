@@ -130,8 +130,8 @@ export default function OrdersList() {
         page,
         limit: 10,
         status: statusFilter || undefined,
-        from: fromDate,
-        to: toDate,
+        from: fromDate || undefined,
+        to: toDate || undefined,
       }),
     enabled: shouldFetch,
   });
