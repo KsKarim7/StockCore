@@ -600,6 +600,7 @@ export default function OrdersList() {
         settingsData?.store_info?.physical_address ?? "123 Business Road, City",
       storePhone: settingsData?.store_info?.phone_number ?? "",
       salesRep: settingsData?.store_info?.owner_name ?? "Staff",
+      customerName: order.customer?.name || "",
       orderNumber: order.order_number,
       invoiceId: `INV-${year}-${num}`,
       dateStr,

@@ -53,6 +53,7 @@ export interface ReceiptData {
   storeAddress: string;
   storePhone: string;
   salesRep: string;
+  customerName?: string;
   orderNumber: string;
   invoiceId: string;
   dateStr: string;
@@ -95,6 +96,12 @@ export function buildReceiptLines(data: ReceiptData): ReceiptLine[] {
   add(`Invoice ID : ${data.invoiceId}`);
   add(`Date & Time: ${data.dateStr}`);
   add(`Status     : ${data.statusLabel}`);
+  if (data.customerName) {
+    const name = data.customerName.length > 19
+      ? data.customerName.substring(0, 16) + '...'
+      : data.customerName;
+    add(`Customer   : ${name}`);
+  }
   add(thinDivider);
   add('ITEM INFO       QTY  PRICE   TOTAL');
   add(thinDivider);
@@ -211,7 +218,10 @@ export async function printViaBluetooth(lines: ReceiptLine[]): Promise<void> {
   const characteristic = await service.getCharacteristic(BT_CHAR);
 
   const data = buildReceiptBytes(lines);
-  const CHUNK = 512;
+  // Default BLE ATT MTU payload (23-byte MTU - 3-byte header) — chunks larger than
+  // the negotiated MTU are silently dropped/garbled by writeValueWithoutResponse
+  // on printers (like the D-MAX MPT-II) that never negotiate a bigger MTU.
+  const CHUNK = 20;
 
   for (let i = 0; i < data.length; i += CHUNK) {
     await characteristic.writeValueWithoutResponse(data.slice(i, i + CHUNK));
